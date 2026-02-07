@@ -5,7 +5,7 @@
    Also takes a screenshot for annotation overlay.
    --------------------------------------------------------------- */
 
-import { chromium, Browser } from "playwright";
+import { chromium, Browser } from "playwright-core";
 import { SampledElement, SampleResult, ProgressCallback } from "./types";
 
 const TEXT_SELECTORS = [
@@ -26,10 +26,21 @@ export async function sampleDom(
   try {
     onProgress?.({ phase: "launching", message: "Launching browser…" });
 
-    browser = await chromium.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
+    const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+
+    if (isServerless) {
+      const sparticuzChromium = (await import("@sparticuz/chromium")).default;
+      browser = await chromium.launch({
+        args: sparticuzChromium.args,
+        executablePath: await sparticuzChromium.executablePath(),
+        headless: true,
+      });
+    } else {
+      browser = await chromium.launch({
+        headless: true,
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      });
+    }
 
     const VIEWPORT_WIDTH = 1280;
     const VIEWPORT_HEIGHT = 900;

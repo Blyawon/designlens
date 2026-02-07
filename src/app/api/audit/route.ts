@@ -7,6 +7,8 @@ import { runAudit } from "@/lib/audit/runAudit";
 import { validateUrl } from "@/lib/validateUrl";
 import { saveReport } from "@/lib/store";
 
+export const maxDuration = 60; // seconds — audits take 10-25s
+
 /* ---- simple in-memory rate limiter ---- */
 
 const hits = new Map<string, number[]>();
