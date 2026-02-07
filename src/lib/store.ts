@@ -1,12 +1,17 @@
 /* ---------------------------------------------------------------
    Simple file-based report store
+   Uses /tmp on Vercel (read-only filesystem except /tmp).
+   Local dev uses .data/ in the project root.
    --------------------------------------------------------------- */
 
 import fs from "fs/promises";
 import path from "path";
 import { AuditResult } from "./audit/types";
 
-const DATA_DIR = path.join(process.cwd(), ".data", "reports");
+const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+const DATA_DIR = isServerless
+  ? path.join("/tmp", "designlens", "reports")
+  : path.join(process.cwd(), ".data", "reports");
 
 async function ensureDir() {
   await fs.mkdir(DATA_DIR, { recursive: true });
