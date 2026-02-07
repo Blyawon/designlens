@@ -1,26 +1,99 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #e8e5df;
+  --bg-card: #ffffff;
+  --bg-elevated: #f5f3ef;
+  --border: #d4d0c8;
+  --border-light: #c2beb5;
+  --text-primary: #1c1917;
+  --text-secondary: #44403c;
+  --text-tertiary: #78716c;
+  --accent: #5c6e3c;
+  --accent-light: #edf2e4;
+  --olive: #4d5e30;
+  --olive-50: #f3f5ee;
+  --olive-100: #dce4cc;
+  --olive-200: #b8c99a;
+  --green: #15803d;
+  --amber: #b45309;
+  --red: #dc2626;
+  --blue: #1d4ed8;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-bg: var(--bg);
+  --color-bg-card: var(--bg-card);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-border: var(--border);
+  --color-border-light: var(--border-light);
+  --color-ds-primary: var(--text-primary);
+  --color-ds-secondary: var(--text-secondary);
+  --color-ds-tertiary: var(--text-tertiary);
+  --color-ds-accent: var(--accent);
+  --color-ds-olive: var(--olive);
+  --color-ds-olive-50: var(--olive-50);
+  --color-ds-olive-100: var(--olive-100);
+  --color-ds-olive-200: var(--olive-200);
+  --color-ds-green: var(--green);
+  --color-ds-amber: var(--amber);
+  --color-ds-red: var(--red);
+  --color-ds-blue: var(--blue);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-serif: var(--font-instrument-serif);
+  --animate-fade-up: fadeUp 0.4s ease-out both;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes blink {
+  0%, 45% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+@keyframes growBar {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.75); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes drift {
+  0%   { transform: translate(0, 0) scale(1); }
+  33%  { transform: translate(30px, -25px) scale(1.05); }
+  66%  { transform: translate(-25px, 30px) scale(0.95); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+@keyframes drift2 {
+  0%   { transform: translate(0, 0) scale(1); }
+  33%  { transform: translate(-20px, 25px) scale(0.97); }
+  66%  { transform: translate(25px, -15px) scale(1.03); }
+  100% { transform: translate(0, 0) scale(1); }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
 }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #b5b1a8; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #9e9a91; }
