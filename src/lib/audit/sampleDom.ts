@@ -448,13 +448,18 @@ export async function sampleDom(
       /* best-effort */
     }
 
-    // ---- take full-page screenshot ----
+    // ---- take full-page screenshot (skip on serverless to save /tmp space) ----
     const pageHeight = await page.evaluate(() => document.body.scrollHeight);
-    const screenshot = await page.screenshot({
-      type: "jpeg",
-      quality: 75,
-      fullPage: true,
-    });
+    let screenshot: Buffer;
+    if (isServerless) {
+      screenshot = Buffer.alloc(0);
+    } else {
+      screenshot = await page.screenshot({
+        type: "jpeg",
+        quality: 75,
+        fullPage: true,
+      });
+    }
 
     return {
       elements: samples,

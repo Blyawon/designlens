@@ -50,8 +50,11 @@ export async function runAudit(
   const { elements, screenshot, viewportWidth, pageHeight, fontFaces } =
     await sampleDom(url, onProgress);
 
-  onProgress?.({ phase: "screenshot", message: "Saving screenshot…" });
-  await saveScreenshot(id, screenshot);
+  const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+  if (!isServerless && screenshot.length > 0) {
+    onProgress?.({ phase: "screenshot", message: "Saving screenshot…" });
+    await saveScreenshot(id, screenshot);
+  }
 
   onProgress?.({ phase: "colors", message: "Analysing colours…" });
   const colorSprawl = analyzeColorSprawl(elements);
