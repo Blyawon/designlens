@@ -31,7 +31,14 @@ export async function sampleDom(
     if (isServerless) {
       const sparticuzChromium = (await import("@sparticuz/chromium")).default;
       browser = await chromium.launch({
-        args: sparticuzChromium.args,
+        args: [
+          ...sparticuzChromium.args,
+          "--disable-gpu",
+          "--disable-accelerated-2d-canvas",
+          "--disable-canvas-aa",
+          "--disable-background-networking",
+          "--disk-cache-size=0",
+        ],
         executablePath: await sparticuzChromium.executablePath(),
         headless: true,
       });
@@ -42,21 +49,26 @@ export async function sampleDom(
       });
     }
 
-    const VIEWPORT_WIDTH = 1280;
-    const VIEWPORT_HEIGHT = 900;
+    const VIEWPORT_WIDTH = isServerless ? 1280 : 1280;
+    const VIEWPORT_HEIGHT = isServerless ? 720 : 900;
 
     const page = await browser.newPage({
       viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
       userAgent:
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     });
-    page.setDefaultTimeout(45_000);
+    page.setDefaultTimeout(isServerless ? 30_000 : 45_000);
 
-    // Block heavy media we don't need — keeps loading fast.
-    // We keep fonts + stylesheets + images (images needed for screenshot).
+    // Block heavy resources to save memory (especially on serverless).
+    // On serverless: block images, media, fonts. We only need DOM + stylesheets.
+    // Locally: keep fonts + images for screenshots / font specimens.
+    const blockTypes = isServerless
+      ? ["media", "image", "font"]
+      : ["media"];
+
     await page.route("**/*", (route) => {
       const type = route.request().resourceType();
-      if (["media"].includes(type)) {
+      if (blockTypes.includes(type)) {
         return route.abort();
       }
       return route.continue();
