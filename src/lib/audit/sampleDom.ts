@@ -156,7 +156,23 @@ async function sampleDomOnce(
        isn't sparticuz's — simple, complete, can't miss anything. */
     sweepTmp();
 
-    /* ── Chrome launch args ── */
+    /* ── Chrome launch args ──
+       CRITICAL: @sparticuz/chromium passes --headless='shell' with literal
+       single quotes. When Playwright spawns Chrome (no shell involved),
+       Chrome receives the quotes as part of the value and doesn't
+       recognise 'shell' as a valid headless mode. Meanwhile Playwright
+       adds --headless=new (from headless:true). The last flag wins, but
+       sparticuz's broken flag might confuse the parser. The result:
+       Chrome falls back to "new" headless — the HEAVY mode that spins up
+       a full browser UI layer (~200-400MB more RAM).
+
+       Fix: strip ALL --headless flags from sparticuz's args. Add our own
+       --headless=shell (no quotes) LAST so it overrides Playwright's
+       --headless=new. Shell mode is the lightweight old headless — same
+       CDP/screenshot support, 200-400MB less RAM. On a 3008MB container,
+       that's the difference between Chrome fitting and Chrome OOMing
+       on warm containers where Node.js has already consumed 500MB+. */
+
     const extraArgs = [
       "--disable-dev-shm-usage",
       "--disable-background-networking",
@@ -178,17 +194,16 @@ async function sampleDomOnce(
       "--disable-accelerated-2d-canvas",
       "--disable-canvas-aa",
       "--js-flags=--max-old-space-size=512",
-      /* Zero disk cache — we load a single page and throw it away.
-         sparticuz defaults set 32MB; each timed-out invocation leaked
-         that to /tmp. Zero eliminates it. */
       "--disk-cache-size=0",
-      /* Disable crash reporting — prevents Crashpad dirs in /tmp */
       "--disable-breakpad",
       "--disable-crash-reporter",
+      /* MUST be last — overrides Playwright's --headless=new */
+      "--headless=shell",
     ];
 
-    /* SwiftShader flags to strip from sparticuz defaults */
-    const swiftshaderFlags = new Set([
+    /* Flags to strip from sparticuz defaults */
+    const stripFlags = new Set([
+      /* SwiftShader GPU emulation — we don't render pixels */
       "--use-gl=angle",
       "--use-angle=swiftshader",
       "--enable-unsafe-swiftshader",
@@ -200,9 +215,15 @@ async function sampleDomOnce(
       const sparticuzChromium = (await import("@sparticuz/chromium")).default;
       sparticuzChromium.setGraphicsMode = false;
 
-      /* Filter sparticuz defaults: remove SwiftShader + override disk cache */
+      /* Filter sparticuz defaults:
+         - remove SwiftShader flags
+         - remove broken --headless='shell' (literal quotes)
+         - remove --disk-cache-size=32MB (we set 0) */
       const baseArgs = sparticuzChromium.args.filter(
-        (a: string) => !swiftshaderFlags.has(a) && !a.startsWith("--disk-cache-size")
+        (a: string) =>
+          !stripFlags.has(a) &&
+          !a.startsWith("--disk-cache-size") &&
+          !a.startsWith("--headless")
       );
 
       browser = await chromium.launch({
