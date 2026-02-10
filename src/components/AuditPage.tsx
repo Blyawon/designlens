@@ -169,9 +169,7 @@ function BrowserChrome({
 }) {
   const inner = (
     <div
-      className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 border-b ${
-        sticky ? "" : "rounded-t-2xl "
-      }${
+      className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 border-b rounded-t-2xl ${
         ghost
           ? "border-border/30 bg-bg-card/30"
           : "border-border/40 bg-[var(--bg-elevated)]"
@@ -385,12 +383,12 @@ function SectionGroup({
   return (
     <div className={first ? "pt-5 sm:pt-6" : "pt-4 sm:pt-5"}>
       <div
-        className={`sticky ${SEARCH_BAR_H} z-30 -mx-5 sm:-mx-8 px-4 sm:px-7 pt-2.5 pb-1`}
+        className={`sticky ${SEARCH_BAR_H} z-30 -mx-5 sm:-mx-8 px-4 sm:px-7 pt-2.5 pb-1 pointer-events-none`}
       >
         <button
           onClick={toggle}
           className={[
-            "w-full flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer",
+            "w-full flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer pointer-events-auto",
             "border border-border bg-bg-card backdrop-blur-sm shadow-sm",
             "transition-all duration-150 ease-out",
             "hover:border-ds-olive/30 hover:shadow-md hover:bg-surface-subtle",
