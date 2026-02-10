@@ -16,9 +16,9 @@ import confetti from "canvas-confetti";
 type Status = "idle" | "running" | "done" | "error";
 
 /* Client-side timeout for the entire audit request.
-   If the server hasn't finished in 55s, we abort gracefully
-   (server-side maxDuration is 60s, so 55s avoids a silent drop). */
-const CLIENT_TIMEOUT_MS = 55_000;
+   If the server hasn't finished in 115s, we abort gracefully
+   (server-side maxDuration is 120s, so 115s avoids a silent drop). */
+const CLIENT_TIMEOUT_MS = 115_000;
 
 /* ---- Typewriter ---- */
 

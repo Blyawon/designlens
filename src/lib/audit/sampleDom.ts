@@ -49,6 +49,11 @@ function isCrashError(err: unknown): boolean {
   );
 }
 
+/* Max time budget for the entire sampleDom call (including retries).
+   Must be less than the serverless function maxDuration (120s) to leave
+   time for the analysis phase after DOM sampling. */
+const SAMPLE_BUDGET_MS = 90_000;
+
 export async function sampleDom(
   url: string,
   onProgress?: ProgressCallback,
@@ -56,16 +61,19 @@ export async function sampleDom(
 ): Promise<SampleResult> {
   /* Retry strategy for non-deterministic crashes:
      1. Normal attempt — full JS, full viewport, all resources
-     2. If crash → plain retry (same settings, fresh container/process —
+     2. If crash → plain retry (same settings, fresh browser process —
         catches intermittent OOM caused by GC timing or JIT variance)
      3. If crash again → aggressive mode (no JS, blocked scripts,
-        smaller viewport — the nuclear option for truly heavy pages) */
+        smaller viewport — the nuclear option for truly heavy pages)
+     Each retry only fires if we have enough time budget left. */
+  const startedAt = Date.now();
+  const hasTime = () => Date.now() - startedAt < SAMPLE_BUDGET_MS;
 
   // Attempt 1: normal
   try {
     return await sampleDomOnce(url, onProgress, signal, false);
   } catch (err) {
-    if (!isCrashError(err) || signal?.aborted) throw err;
+    if (!isCrashError(err) || signal?.aborted || !hasTime()) throw err;
   }
 
   // Attempt 2: plain retry — same settings, fresh browser
@@ -73,7 +81,7 @@ export async function sampleDom(
   try {
     return await sampleDomOnce(url, onProgress, signal, false);
   } catch (err) {
-    if (!isCrashError(err) || signal?.aborted) throw err;
+    if (!isCrashError(err) || signal?.aborted || !hasTime()) throw err;
   }
 
   // Attempt 3: aggressive — no JS, smaller viewport, blocked scripts
@@ -703,13 +711,21 @@ async function sampleDomOnce(
     };
   } finally {
     if (browser) {
-      /* Race browser.close() against a 5s timeout.
-         A crashed browser can hang on close() indefinitely,
-         and we need to free the memory before a potential retry. */
-      await Promise.race([
-        browser.close().catch(() => {}),
-        new Promise((r) => setTimeout(r, 5_000)),
-      ]);
+      /* Force-kill the Chromium process tree, then close.
+         browser.close() sends a polite shutdown signal, but a crashed
+         browser can hang indefinitely. SIGKILL is instant and frees
+         memory immediately — critical before a retry launches a new browser
+         on the same warm container. */
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const proc = (browser as any).process?.();
+        if (proc?.pid) {
+          process.kill(proc.pid, "SIGKILL");
+        }
+      } catch {
+        /* process already dead — that's fine */
+      }
+      await browser.close().catch(() => {});
     }
   }
 }

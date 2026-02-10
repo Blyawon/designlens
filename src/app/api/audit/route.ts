@@ -13,7 +13,7 @@ import { validateUrl } from "@/lib/validateUrl";
 import { saveReport } from "@/lib/store";
 import { normalizeError } from "@/lib/audit/errorMessages";
 
-export const maxDuration = 60; // seconds — audits take 10-25s
+export const maxDuration = 120; // seconds — allows up to 3 retry attempts on crash
 
 /* ---- simple in-memory rate limiter ---- */
 
