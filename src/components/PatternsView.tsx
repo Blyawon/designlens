@@ -32,7 +32,7 @@ export default function PatternsView({ data }: Props) {
 
       {/* Coverage bar */}
       <div className="mb-4">
-        <div className="h-2 bg-white/[0.04] rounded-full overflow-hidden flex">
+        <div className="h-2 bg-surface-subtle rounded-full overflow-hidden flex">
           {data.patterns.slice(0, 8).map((p, i) => (
             <div
               key={i}
@@ -47,7 +47,7 @@ export default function PatternsView({ data }: Props) {
           ))}
           {data.oneOffs > 0 && (
             <div
-              className="h-full bg-white/[0.06]"
+              className="h-full bg-ds-olive/10"
               style={{
                 width: `${(data.oneOffs / data.totalElements) * 100}%`,
               }}
@@ -91,7 +91,7 @@ export default function PatternsView({ data }: Props) {
                   {Object.entries(p.properties).map(([k, v]) => (
                     <span
                       key={k}
-                      className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.04] text-ds-secondary border border-border"
+                      className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-subtle text-ds-secondary border border-border"
                     >
                       {k}: {v}
                     </span>
@@ -108,7 +108,7 @@ export default function PatternsView({ data }: Props) {
                 ))}
                 {p.elements.length > 4 && (
                   <p className="text-[10px] text-ds-tertiary">
-                    +{p.count - 4} more
+                    +{p.elements.length - 4} more
                   </p>
                 )}
               </div>

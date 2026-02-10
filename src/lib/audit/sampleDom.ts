@@ -112,11 +112,10 @@ async function sampleDomOnce(
 
   /* Declared here, assigned after page is created */
   let pageCrashed = false;
+  const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
 
   try {
     onProgress?.({ phase: "launching", message: "Launching browser…" });
-
-    const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
 
     /* ── /tmp hygiene (serverless warm containers) ──
        Playwright leaves temp profile dirs in /tmp. On warm containers
@@ -198,7 +197,12 @@ async function sampleDomOnce(
     } else {
       browser = await chromium.launch({
         headless: true,
-        args,
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-gpu",
+          ...extraArgs,
+        ],
       });
     }
 
@@ -265,7 +269,7 @@ async function sampleDomOnce(
        "domcontentloaded" fires when HTML is parsed and deferred scripts run,
        which is all we need since we sample computed styles. */
     try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 20_000 });
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: aggressiveMode ? 15_000 : 20_000 });
     } catch (err: unknown) {
       const isTimeout =
         err instanceof Error && err.message.includes("Timeout");
@@ -308,10 +312,16 @@ async function sampleDomOnce(
         ];
         for (const sel of patterns) {
           const btn = document.querySelector<HTMLElement>(sel);
-          if (btn && btn.offsetParent !== null) {
-            btn.click();
-            return true;
-          }
+          if (!btn) continue;
+          /* offsetParent is null for position:fixed elements — which is
+             how most cookie banners are positioned. Use getComputedStyle
+             and getBoundingClientRect as a reliable visibility check. */
+          const cs = window.getComputedStyle(btn);
+          if (cs.display === "none" || cs.visibility === "hidden") continue;
+          const rect = btn.getBoundingClientRect();
+          if (rect.width === 0 && rect.height === 0) continue;
+          btn.click();
+          return true;
         }
         return false;
       });
@@ -353,24 +363,24 @@ async function sampleDomOnce(
     /* Scroll page to trigger lazy-rendered content, capped at scroll depth.
        In aggressive mode, skip scrolling entirely — it loads more content
        which is the #1 cause of OOM on heavy sites. */
-    const scrollDepth = aggressiveMode ? 0 : MAX_SCROLL_DEPTH;
-    const scrollTarget = await page.evaluate(
-      (maxDepth: number) => Math.min(document.body.scrollHeight, maxDepth),
-      scrollDepth
-    );
-    await page.evaluate((target: number) => window.scrollTo(0, target), scrollTarget);
-    /* Use waitForFunction instead of blind waitForTimeout — waits until
-       new DOM content appears or 1s max, whichever comes first. */
-    await page
-      .waitForFunction(
-        (sel: string) => document.querySelectorAll(sel).length > 20,
-        TEXT_SELECTORS,
-        { timeout: 1_000 }
-      )
-      .catch(() => {});
-    await page.evaluate(() => window.scrollTo(0, 0));
-    /* Tiny settle (replaces old 500ms wait) */
-    await page.waitForTimeout(200);
+    if (!aggressiveMode) {
+      const scrollTarget = await page.evaluate(
+        (maxDepth: number) => Math.min(document.body.scrollHeight, maxDepth),
+        MAX_SCROLL_DEPTH
+      );
+      await page.evaluate((target: number) => window.scrollTo(0, target), scrollTarget);
+      /* Wait until new DOM content appears (lazy-load) or 1s max */
+      await page
+        .waitForFunction(
+          (sel: string) => document.querySelectorAll(sel).length > 20,
+          TEXT_SELECTORS,
+          { timeout: 1_000 }
+        )
+        .catch(() => {});
+      await page.evaluate(() => window.scrollTo(0, 0));
+      /* Tiny settle (replaces old 500ms wait) */
+      await page.waitForTimeout(200);
+    }
 
     checkAbort();
     onProgress?.({ phase: "sampling", message: "Sampling DOM elements…" });
@@ -440,6 +450,12 @@ async function sampleDomOnce(
             }
             cur = cur.parentElement;
           }
+          /* Fall back to the root element's background — correct for dark-mode sites
+             instead of blindly assuming white. */
+          const rootBg = window.getComputedStyle(document.documentElement).backgroundColor;
+          if (rootBg && rootBg !== "transparent" && rootBg !== "rgba(0, 0, 0, 0)") {
+            return rootBg;
+          }
           return "rgb(255, 255, 255)";
         }
 
@@ -507,7 +523,16 @@ async function sampleDomOnce(
         }
 
         // ---- Pass 2: layout elements (skip text ones we already have) ----
-        const seen = new Set(results.map((r: any) => r.selector));
+        /* Build a set of actual DOM nodes we already sampled as text elements,
+           so we skip them by identity instead of by selector string (which can
+           collide for different elements with similar class names). */
+        const textNodeSet = new Set<Element>();
+        const textEls2 = document.querySelectorAll(textSel);
+        for (let i = 0; i < textEls2.length && textNodeSet.size < tCount; i++) {
+          if (isVisible(textEls2[i]) && textEls2[i].textContent?.trim()) {
+            textNodeSet.add(textEls2[i]);
+          }
+        }
 
         /* Instead of querySelectorAll("*") which returns EVERY node,
            target elements that are likely to carry layout tokens.
@@ -519,8 +544,7 @@ async function sampleDomOnce(
         for (let i = 0; i < layoutEls.length && lCount < maxLayout; i++) {
           const el = layoutEls[i];
           if (!isVisible(el)) continue;
-          const sel = shortSelector(el);
-          if (seen.has(sel)) continue;
+          if (textNodeSet.has(el)) continue;
 
           const s = window.getComputedStyle(el);
 
@@ -540,7 +564,7 @@ async function sampleDomOnce(
           const r = el.getBoundingClientRect();
 
           results.push({
-            selector: sel,
+            selector: shortSelector(el),
             tag: el.tagName.toLowerCase(),
             marginTop: s.marginTop,
             marginRight: s.marginRight,
@@ -734,7 +758,7 @@ async function sampleDomOnce(
 
     return {
       elements: samples,
-      screenshot: Buffer.from(screenshot),
+      screenshot,
       viewportWidth: VIEWPORT_WIDTH,
       viewportHeight: VIEWPORT_HEIGHT,
       pageHeight,
@@ -743,28 +767,37 @@ async function sampleDomOnce(
     };
   } finally {
     if (browser) {
-      /* Force-kill the entire Chromium process group, then close.
-         -pid sends the signal to the process GROUP, which catches
-         all child processes (renderer, GPU, utility) — not just the
-         main browser process. This prevents zombie children from
-         accumulating on warm containers. */
+      /* Kill the Chromium process, then close the browser handle.
+         On serverless with --single-process, Chrome runs as a single child
+         process (no subprocesses). We MUST NOT use kill(-pid) (process group)
+         because Chrome may share the same PGID as Node.js on Lambda, which
+         would kill the Lambda runtime itself.
+         Locally (multi-process Chrome), group kill is safe and catches all
+         child processes (renderer, GPU, utility). */
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const proc = (browser as any).process?.();
         if (proc?.pid) {
-          try { process.kill(-proc.pid, "SIGKILL"); } catch { /* not a group leader */ }
-          try { process.kill(proc.pid, "SIGKILL"); } catch { /* already dead */ }
+          if (isServerless) {
+            /* Single-process mode: just kill the one Chromium process */
+            try { process.kill(proc.pid, "SIGKILL"); } catch { /* already dead */ }
+          } else {
+            /* Multi-process mode: kill the process group to catch all children */
+            try { process.kill(-proc.pid, "SIGKILL"); } catch { /* not a group leader */ }
+            try { process.kill(proc.pid, "SIGKILL"); } catch { /* already dead */ }
+          }
         }
       } catch {
         /* process already dead — that's fine */
       }
       await browser.close().catch(() => {});
     }
-    /* Clean up Playwright's auto-created temp dirs for this launch */
+    /* Clean up Playwright's auto-created temp dirs for this launch.
+       Match the same prefixes as the pre-launch sweep (except chromium). */
     try {
       const tmp = tmpdir();
       for (const name of readdirSync(tmp)) {
-        if (!name.startsWith("playwright")) continue;
+        if (!name.startsWith("pw-") && !name.startsWith("playwright") && !name.startsWith("Crashpad")) continue;
         rmSync(join(tmp, name), { recursive: true, force: true });
       }
     } catch { /* best effort */ }

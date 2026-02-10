@@ -24,9 +24,16 @@ const WINDOW = 60_000;
 function rateOk(ip: string): boolean {
   const now = Date.now();
   const list = (hits.get(ip) ?? []).filter((t) => now - t < WINDOW);
-  hits.set(ip, list);
-  if (list.length >= LIMIT) return false;
+  if (list.length === 0) {
+    /* Evict stale keys to prevent unbounded Map growth on warm containers */
+    hits.delete(ip);
+  }
+  if (list.length >= LIMIT) {
+    hits.set(ip, list);
+    return false;
+  }
   list.push(now);
+  hits.set(ip, list);
   return true;
 }
 

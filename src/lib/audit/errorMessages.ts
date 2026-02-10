@@ -79,8 +79,8 @@ const patterns: ErrorPattern[] = [
   },
 
   /* ---- Playwright browser crashes ----
-     Note: sampleDom already retries once with lighter settings before
-     these messages are shown, so if we get here it failed twice. */
+     Note: sampleDom retries up to 2 times (plain retry + aggressive mode)
+     before these messages are shown, so if we get here it failed 3 times. */
   {
     match: "Target page, context or browser has been closed",
     message: "The browser crashed while loading this page — even after retrying with lighter settings. This site is likely too resource-heavy for our analysis. Try a specific subpage instead of the homepage.",

@@ -1159,7 +1159,7 @@ export default function AuditPage() {
                         <div className="mt-3">
                           <p className="text-xs text-ds-amber font-medium mb-1.5">Off-grid values ({result.spacingSprawl.offGrid.length})</p>
                           <div className="space-y-0.5">
-                            {result.spacingSprawl.offGrid.sort((a, b) => b.count - a.count).map((v) => (
+                            {[...result.spacingSprawl.offGrid].sort((a, b) => b.count - a.count).map((v) => (
                               <p key={v.value} className="text-xs font-mono text-ds-secondary">
                                 {v.value} <span className="text-ds-tertiary">×{v.count}</span>
                               </p>
