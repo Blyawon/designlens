@@ -162,12 +162,14 @@ async function sampleDomOnce(
 
     /* ── Diagnostics (shows up in Vercel function logs) ── */
     if (isServerless) {
+      const os = await import("os");
       const mem = process.memoryUsage();
       const tmpContents = (() => { try { return readdirSync(tmpdir()); } catch { return []; } })();
       console.log("[audit] pre-launch diagnostics:", JSON.stringify({
+        totalSystemMB: Math.round(os.totalmem() / 1024 / 1024),
+        freeSystemMB: Math.round(os.freemem() / 1024 / 1024),
         heapUsedMB: Math.round(mem.heapUsed / 1024 / 1024),
         rssMB: Math.round(mem.rss / 1024 / 1024),
-        externalMB: Math.round(mem.external / 1024 / 1024),
         tmpFiles: tmpContents.length,
         tmpNames: tmpContents.slice(0, 30),
         aggressiveMode,
@@ -279,31 +281,33 @@ async function sampleDomOnce(
 
     checkAbort();
 
-    /* Aggressive mode: smaller viewport + disable JS.
-       Most modern sites SSR their HTML/CSS, so we still get valid
-       computed styles without executing any client-side JavaScript.
-       This is the single biggest memory saving — heavy SPAs can
-       allocate 500MB+ just in JS heap. */
+    /* ── Viewport + JS ──
+       On serverless: ALWAYS disable page JavaScript. This is the single
+       biggest memory saving (~500MB). Chrome's V8 doesn't allocate a
+       heap for the page's scripts. Our page.evaluate() calls still work
+       — CDP injection is separate from page-level JS execution.
+       Most sites SSR their CSS, so computed styles are still accurate.
+       Aggressive mode uses an even smaller viewport. */
     const VIEWPORT_WIDTH = aggressiveMode ? 1024 : 1280;
     const VIEWPORT_HEIGHT = aggressiveMode ? 600 : (isServerless ? 720 : 900);
 
     const page = await browser.newPage({
       viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
-      javaScriptEnabled: !aggressiveMode,
+      javaScriptEnabled: !isServerless && !aggressiveMode,
       userAgent:
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     });
-    /* Shorter default timeout — fail fast rather than hang */
     page.setDefaultTimeout(aggressiveMode ? 15_000 : (isServerless ? 20_000 : 30_000));
 
     /* Block heavy resources to save memory.
-       Normal serverless: block images, media, fonts (we only need DOM + stylesheets).
-       Aggressive (retry): also block scripts, iframes, and other heavy fetches.
-       Locally: keep fonts + images for screenshots / font specimens, block media. */
+       Serverless: block images, media, fonts, AND scripts (JS is disabled
+       anyway — no point downloading script files). We only need HTML + CSS.
+       Aggressive: also block "other" (beacons, websockets, etc).
+       Locally: keep fonts + images for screenshots, block media. */
     const blockTypes: string[] = aggressiveMode
       ? ["media", "image", "font", "script", "other"]
       : isServerless
-        ? ["media", "image", "font"]
+        ? ["media", "image", "font", "script"]
         : ["media"];
 
     /* In aggressive mode, also block known heavy third-party domains */
