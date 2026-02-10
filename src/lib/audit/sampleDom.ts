@@ -15,6 +15,9 @@
 
 import { chromium, Browser } from "playwright-core";
 import { SampledElement, SampleResult, ProgressCallback, CSSToken } from "./types";
+import { mkdtempSync, rmSync, readdirSync, statSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 
 const TEXT_SELECTORS = [
   "p","span","a","li","button","input","label","th","td",
@@ -110,10 +113,38 @@ async function sampleDomOnce(
   /* Declared here, assigned after page is created */
   let pageCrashed = false;
 
+  /* Temp directory for this browser instance — we control its lifecycle */
+  let userDataDir: string | null = null;
+
   try {
     onProgress?.({ phase: "launching", message: "Launching browser…" });
 
     const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+
+    /* ── /tmp hygiene (serverless warm containers) ──
+       Chromium leaves profile dirs, crashpad, and cache in /tmp.
+       On warm containers these accumulate across invocations and
+       eventually fill the 512MB /tmp quota, causing Chromium to
+       fail on launch. Clean up stale Chromium dirs before starting. */
+    if (isServerless) {
+      try {
+        const tmp = tmpdir();
+        const now = Date.now();
+        for (const name of readdirSync(tmp)) {
+          if (!name.startsWith("pw-") && !name.startsWith("chromium") && !name.startsWith("Crashpad")) continue;
+          const full = join(tmp, name);
+          try {
+            const age = now - statSync(full).mtimeMs;
+            if (age > 30_000) { // older than 30s = not ours
+              rmSync(full, { recursive: true, force: true });
+            }
+          } catch { /* best effort */ }
+        }
+      } catch { /* /tmp read failed — not fatal */ }
+    }
+
+    /* Create a dedicated user-data-dir we can nuke on cleanup */
+    userDataDir = mkdtempSync(join(tmpdir(), "pw-"));
 
     /* ── Chrome launch args ──
        We build our own arg list from scratch instead of blindly spreading
@@ -161,6 +192,8 @@ async function sampleDomOnce(
       "--disable-site-isolation-trials",
       /* Headless shell mode — lighter than old headless */
       "--headless=shell",
+      /* Use our controlled temp dir — cleaned up in finally block */
+      `--user-data-dir=${userDataDir}`,
       /* NOTE: --single-process and --no-zygote deliberately omitted.
          @sparticuz/chromium includes them by default but they make
          Chromium extremely crash-prone: one renderer failure = entire
@@ -723,21 +756,26 @@ async function sampleDomOnce(
     };
   } finally {
     if (browser) {
-      /* Force-kill the Chromium process tree, then close.
-         browser.close() sends a polite shutdown signal, but a crashed
-         browser can hang indefinitely. SIGKILL is instant and frees
-         memory immediately — critical before a retry launches a new browser
-         on the same warm container. */
+      /* Force-kill the entire Chromium process group, then close.
+         -pid sends the signal to the process GROUP, which catches
+         all child processes (renderer, GPU, utility) — not just the
+         main browser process. This prevents zombie children from
+         accumulating on warm containers. */
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const proc = (browser as any).process?.();
         if (proc?.pid) {
-          process.kill(proc.pid, "SIGKILL");
+          try { process.kill(-proc.pid, "SIGKILL"); } catch { /* not a group leader */ }
+          try { process.kill(proc.pid, "SIGKILL"); } catch { /* already dead */ }
         }
       } catch {
         /* process already dead — that's fine */
       }
       await browser.close().catch(() => {});
+    }
+    /* Nuke the user-data-dir so /tmp doesn't fill up */
+    if (userDataDir) {
+      try { rmSync(userDataDir, { recursive: true, force: true }); } catch { /* best effort */ }
     }
   }
 }
