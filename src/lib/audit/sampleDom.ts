@@ -77,6 +77,12 @@ export async function sampleDom(
     return await sampleDomOnce(url, onProgress, signal, false);
   } catch (err) {
     if (!isCrashError(err) || signal?.aborted || !hasTime()) throw err;
+    const mem = process.memoryUsage();
+    console.log("[audit] Attempt 1 crashed:", {
+      err: err instanceof Error ? err.message : String(err),
+      heapMB: Math.round(mem.heapUsed / 1024 / 1024),
+      rssMB: Math.round(mem.rss / 1024 / 1024),
+    });
   }
 
   // Attempt 2: plain retry — same settings, fresh browser
@@ -85,6 +91,12 @@ export async function sampleDom(
     return await sampleDomOnce(url, onProgress, signal, false);
   } catch (err) {
     if (!isCrashError(err) || signal?.aborted || !hasTime()) throw err;
+    const mem = process.memoryUsage();
+    console.log("[audit] Attempt 2 crashed:", {
+      err: err instanceof Error ? err.message : String(err),
+      heapMB: Math.round(mem.heapUsed / 1024 / 1024),
+      rssMB: Math.round(mem.rss / 1024 / 1024),
+    });
   }
 
   // Attempt 3: aggressive — no JS, smaller viewport, blocked scripts
@@ -148,12 +160,21 @@ async function sampleDomOnce(
   try {
     onProgress?.({ phase: "launching", message: "Launching browser…" });
 
-    /* ── Pre-launch /tmp sweep ──
-       On warm containers, previous invocations may have left behind
-       Playwright user data dirs (5-35MB each), Crashpad dirs, xdg
-       dirs, etc. Previous code used prefix matching (pw-*, playwright*)
-       which missed some patterns. Now we just delete everything that
-       isn't sparticuz's — simple, complete, can't miss anything. */
+    /* ── Diagnostics (shows up in Vercel function logs) ── */
+    if (isServerless) {
+      const mem = process.memoryUsage();
+      const tmpContents = (() => { try { return readdirSync(tmpdir()); } catch { return []; } })();
+      console.log("[audit] pre-launch diagnostics:", JSON.stringify({
+        heapUsedMB: Math.round(mem.heapUsed / 1024 / 1024),
+        rssMB: Math.round(mem.rss / 1024 / 1024),
+        externalMB: Math.round(mem.external / 1024 / 1024),
+        tmpFiles: tmpContents.length,
+        tmpNames: tmpContents.slice(0, 30),
+        aggressiveMode,
+      }));
+    }
+
+    /* ── Pre-launch /tmp sweep ── */
     sweepTmp();
 
     /* ── Chrome launch args ──
@@ -226,11 +247,15 @@ async function sampleDomOnce(
           !a.startsWith("--headless")
       );
 
+      const finalArgs = [...baseArgs, "--disable-gpu", ...extraArgs];
+      console.log("[audit] Chrome args headless flags:",
+        finalArgs.filter(a => a.startsWith("--headless")));
       browser = await chromium.launch({
-        args: [...baseArgs, "--disable-gpu", ...extraArgs],
+        args: finalArgs,
         executablePath: await sparticuzChromium.executablePath(),
         headless: true,
       });
+      console.log("[audit] Chrome launched successfully");
     } else {
       browser = await chromium.launch({
         headless: true,
