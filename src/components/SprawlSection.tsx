@@ -8,7 +8,7 @@ import { TypeValue, CategoryScore, ScoreSignal } from "@/lib/audit/types";
 function SelectorTooltip({ elements }: { elements: string[] }) {
   if (elements.length === 0) return null;
   return (
-    <div className="hidden sm:block absolute left-24 bottom-full mb-1.5 z-50 bg-white border border-border rounded-lg px-3 py-2.5 shadow-lg max-w-sm pointer-events-none">
+    <div className="hidden sm:block absolute left-24 bottom-full mb-1.5 z-50 bg-bg-card border border-border rounded-lg px-3 py-2.5 shadow-lg max-w-sm pointer-events-none">
       <p className="text-xs text-ds-tertiary mb-1.5 uppercase tracking-wider">
         Applied to
       </p>
@@ -67,7 +67,7 @@ function Bar({
       >
         {justCopied ? "Copied" : item.value}
       </button>
-      <div className="flex-1 h-4 sm:h-5 bg-black/[0.03] rounded-sm relative overflow-hidden">
+      <div className="flex-1 h-4 sm:h-5 bg-[var(--surface-tint)] rounded-sm relative overflow-hidden">
         <div
           className={`h-full rounded-sm ${barColor}`}
           style={{
@@ -105,7 +105,7 @@ function SignalRow({ signal }: { signal: ScoreSignal }) {
       <span className="w-20 sm:w-28 text-ds-tertiary truncate shrink-0">
         {signal.name}
       </span>
-      <div className="w-20 sm:w-28 h-2 bg-black/[0.06] rounded-full overflow-hidden shrink-0">
+      <div className="w-20 sm:w-28 h-2 bg-[var(--surface-overlay)] rounded-full overflow-hidden shrink-0">
         <div
           className={`h-full rounded-full ${color}`}
           style={{

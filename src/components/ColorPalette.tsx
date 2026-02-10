@@ -43,7 +43,7 @@ function HueStrip({
       {/* Floating toast */}
       {copiedHex && (
         <div
-          className="absolute -top-9 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-ds-primary text-white text-xs font-mono shadow-lg"
+          className="absolute -top-9 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-ds-primary text-bg-card text-xs font-mono shadow-lg"
           style={{ animation: "slideDown 0.15s ease-out" }}
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className="shrink-0">
@@ -147,7 +147,7 @@ export default function ColorPalette({ data, score, defaultOpen }: Props) {
                   <span className="w-20 sm:w-28 text-ds-tertiary truncate shrink-0">
                     {s.name}
                   </span>
-                  <div className="w-20 sm:w-28 h-2 bg-black/[0.06] rounded-full overflow-hidden shrink-0">
+                  <div className="w-20 sm:w-28 h-2 bg-[var(--surface-overlay)] rounded-full overflow-hidden shrink-0">
                     <div
                       className={`h-full rounded-full ${
                         s.value >= 80

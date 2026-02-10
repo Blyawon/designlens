@@ -7,9 +7,9 @@ interface Props {
 }
 
 const severityStyle: Record<string, string> = {
-  high: "bg-red-100/80 text-ds-red border-red-200",
-  medium: "bg-amber-100/60 text-ds-amber border-amber-200",
-  low: "bg-blue-50 text-ds-blue border-blue-200",
+  high: "bg-[var(--grade-red-bg)] text-ds-red border-[var(--grade-red-border)]",
+  medium: "bg-[var(--grade-amber-bg)] text-ds-amber border-[var(--grade-amber-border)]",
+  low: "bg-[var(--grade-blue-bg)] text-ds-blue border-[var(--grade-blue-border)]",
 };
 
 const severityDot: Record<string, string> = {

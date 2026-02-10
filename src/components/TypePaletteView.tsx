@@ -11,7 +11,7 @@ interface Props {
 function SelectorTooltip({ elements }: { elements: string[] }) {
   if (elements.length === 0) return null;
   return (
-    <div className="absolute left-0 bottom-full mb-1.5 z-50 bg-white border border-border rounded-lg px-3 py-2.5 shadow-lg max-w-sm pointer-events-none">
+    <div className="absolute left-0 bottom-full mb-1.5 z-50 bg-bg-card border border-border rounded-lg px-3 py-2.5 shadow-lg max-w-sm pointer-events-none">
       <p className="text-xs text-ds-tertiary mb-1.5 uppercase tracking-wider">
         Applied to
       </p>

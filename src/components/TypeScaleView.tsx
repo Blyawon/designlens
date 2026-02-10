@@ -53,7 +53,7 @@ export default function TypeScaleView({ data }: Props) {
                   className={`h-7 rounded-sm flex items-center px-2 transition-all ${
                     step.fits
                       ? "bg-ds-olive-100"
-                      : "bg-amber-50 border border-amber-200"
+                      : "bg-[var(--grade-amber-bg)] border border-[var(--grade-amber-border)]"
                   }`}
                   style={{ width: `${widthPct}%` }}
                 >

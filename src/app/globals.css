@@ -1,25 +1,125 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════════════════════════
+   LIGHT MODE (default)
+   Warm stone palette with olive accents.
+   ═══════════════════════════════════════════════════════════════ */
+
 :root {
+  /* Surfaces */
   --bg: #e8e5df;
   --bg-card: #ffffff;
   --bg-elevated: #f5f3ef;
   --border: #d4d0c8;
   --border-light: #c2beb5;
+
+  /* Text */
   --text-primary: #1c1917;
   --text-secondary: #44403c;
   --text-tertiary: #78716c;
+
+  /* Olive accent */
   --accent: #5c6e3c;
   --accent-light: #edf2e4;
   --olive: #4d5e30;
   --olive-50: #f3f5ee;
   --olive-100: #dce4cc;
   --olive-200: #b8c99a;
+
+  /* Status colors */
   --green: #15803d;
   --amber: #b45309;
   --red: #dc2626;
   --blue: #1d4ed8;
+
+  /* Semantic surfaces — subtle tints for dark/light adaptability */
+  --surface-subtle: rgba(0, 0, 0, 0.02);
+  --surface-tint: rgba(0, 0, 0, 0.03);
+  --surface-overlay: rgba(0, 0, 0, 0.06);
+  --surface-dots: rgba(0, 0, 0, 0.08);
+  --surface-url: rgba(0, 0, 0, 0.04);
+
+  /* Grade pill backgrounds */
+  --grade-green-bg: #f0fdf4;
+  --grade-green-border: rgba(187, 247, 208, 0.6);
+  --grade-blue-bg: #eff6ff;
+  --grade-blue-border: rgba(191, 219, 254, 0.6);
+  --grade-amber-bg: #fffbeb;
+  --grade-amber-border: rgba(253, 230, 138, 0.6);
+  --grade-red-bg: #fef2f2;
+  --grade-red-border: rgba(254, 202, 202, 0.6);
+
+  /* Error / warning banners */
+  --error-bg: #fef2f2;
+  --error-border: #fecaca;
+  --warning-bg: rgba(255, 251, 235, 0.5);
+  --warning-border: rgba(253, 230, 138, 0.3);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   DARK MODE
+   Warm charcoal palette — NOT a cold blue-dark.
+   Colours are boosted slightly for contrast on dark surfaces.
+   ═══════════════════════════════════════════════════════════════ */
+
+.dark {
+  /* Surfaces */
+  --bg: #1a1917;
+  --bg-card: #252321;
+  --bg-elevated: #2c2a27;
+  --border: #3d3935;
+  --border-light: #4a453f;
+
+  /* Text — flipped from light mode backgrounds for contrast.
+     Primary on dark bg → ~12:1 ratio.
+     Secondary → ~7:1.
+     Tertiary → ~4.6:1 (passes AA). */
+  --text-primary: #e8e5df;
+  --text-secondary: #b8b3ab;
+  --text-tertiary: #8a847d;
+
+  /* Olive accent — brighter for contrast on dark.
+     #7a9b4a on #1a1917 → ~5.3:1 (passes AA). */
+  --accent: #7a9b4a;
+  --accent-light: #2a3020;
+  --olive: #7a9b4a;
+  --olive-50: #252920;
+  --olive-100: #3a4230;
+  --olive-200: #5a6e42;
+
+  /* Status — brighter variants for dark surfaces */
+  --green: #22c55e;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --blue: #3b82f6;
+
+  /* Semantic surfaces — white tints instead of black */
+  --surface-subtle: rgba(255, 255, 255, 0.025);
+  --surface-tint: rgba(255, 255, 255, 0.04);
+  --surface-overlay: rgba(255, 255, 255, 0.07);
+  --surface-dots: rgba(255, 255, 255, 0.1);
+  --surface-url: rgba(255, 255, 255, 0.06);
+
+  /* Grade pills — transparent tinted backgrounds */
+  --grade-green-bg: rgba(34, 197, 94, 0.1);
+  --grade-green-border: rgba(34, 197, 94, 0.25);
+  --grade-blue-bg: rgba(59, 130, 246, 0.1);
+  --grade-blue-border: rgba(59, 130, 246, 0.25);
+  --grade-amber-bg: rgba(245, 158, 11, 0.1);
+  --grade-amber-border: rgba(245, 158, 11, 0.25);
+  --grade-red-bg: rgba(239, 68, 68, 0.1);
+  --grade-red-border: rgba(239, 68, 68, 0.25);
+
+  /* Error / warning banners */
+  --error-bg: rgba(239, 68, 68, 0.1);
+  --error-border: rgba(239, 68, 68, 0.25);
+  --warning-bg: rgba(245, 158, 11, 0.08);
+  --warning-border: rgba(245, 158, 11, 0.2);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   TAILWIND THEME TOKENS
+   ═══════════════════════════════════════════════════════════════ */
 
 @theme inline {
   --color-bg: var(--bg);
@@ -44,6 +144,10 @@
   --font-serif: var(--font-instrument-serif);
   --animate-fade-up: fadeUp 0.4s ease-out both;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   KEYFRAMES
+   ═══════════════════════════════════════════════════════════════ */
 
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(12px); }
@@ -84,6 +188,17 @@
   100% { transform: translate(0, 0) scale(1); }
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   BASE STYLES
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Smooth transition for theme changes — applied to bg and text.
+   Only targets properties that change, avoids janky animation on
+   everything else (transforms, opacity, etc). */
+html {
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
 body {
   background: var(--bg);
   color: var(--text-primary);
@@ -91,9 +206,13 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
+  transition: background-color 0.4s ease, color 0.4s ease;
 }
 
+/* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #b5b1a8; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #9e9a91; }
+.dark ::-webkit-scrollbar-thumb { background: #4a453f; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #5a544d; }

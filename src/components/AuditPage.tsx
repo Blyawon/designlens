@@ -79,18 +79,18 @@ function BrowserChrome({ url, ghost }: { url: string; ghost?: boolean }) {
     <div
       className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 border-b ${
         ghost
-          ? "border-border/30 bg-white/30"
+          ? "border-border/30 bg-bg-card/30"
           : "border-border/40 bg-[var(--bg-elevated)]"
       }`}
     >
       <div className="flex gap-1.5 shrink-0">
-        <div className="w-2 h-2 rounded-full bg-black/[0.08]" />
-        <div className="w-2 h-2 rounded-full bg-black/[0.08]" />
-        <div className="w-2 h-2 rounded-full bg-black/[0.08]" />
+        <div className="w-2 h-2 rounded-full bg-[var(--surface-dots)]" />
+        <div className="w-2 h-2 rounded-full bg-[var(--surface-dots)]" />
+        <div className="w-2 h-2 rounded-full bg-[var(--surface-dots)]" />
       </div>
       <div className="flex-1 flex justify-center min-w-0">
         <div
-          className={`px-3 py-0.5 rounded-md bg-black/[0.04] text-[11px] font-mono truncate max-w-[220px] sm:max-w-sm ${
+          className={`px-3 py-0.5 rounded-md bg-[var(--surface-url)] text-[11px] font-mono truncate max-w-[220px] sm:max-w-sm ${
             ghost ? "text-ds-tertiary/50" : "text-ds-tertiary"
           }`}
         >
@@ -110,7 +110,7 @@ const GO = GC - 0.74 * GC;
 
 function GhostPreview() {
   return (
-    <div className="relative mt-4 rounded-2xl border border-border/50 bg-white/40 overflow-hidden shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+    <div className="relative mt-4 rounded-2xl border border-border/50 bg-bg-card/40 overflow-hidden shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
       <BrowserChrome url="your-website.com" ghost />
       <div className="px-6 sm:px-8 pt-6 sm:pt-8 pb-16">
         <div className="flex flex-col items-center gap-2 mb-6">
@@ -138,7 +138,7 @@ function GhostPreview() {
           {[{ w: 78, l: "16px" }, { w: 60, l: "24px" }, { w: 45, l: "14px" }, { w: 33, l: "32px" }, { w: 20, l: "12px" }].map((b) => (
             <div key={b.l} className="flex items-center gap-3">
               <span className="w-10 text-right text-[11px] font-mono text-ds-tertiary/30">{b.l}</span>
-              <div className="flex-1 h-4 bg-black/[0.015] rounded-sm overflow-hidden">
+              <div className="flex-1 h-4 bg-[var(--surface-subtle)] rounded-sm overflow-hidden">
                 <div className="h-full bg-ds-olive-100/30 rounded-sm" style={{ width: `${b.w}%` }} />
               </div>
               <span className="w-6 text-right text-[10px] font-mono text-ds-tertiary/20">{Math.round(b.w * 0.6)}</span>
@@ -200,11 +200,11 @@ const gradeColor: Record<string, string> = {
 };
 
 const gradePillBg: Record<string, string> = {
-  A: "bg-green-50 border-green-200/60",
-  B: "bg-blue-50 border-blue-200/60",
-  C: "bg-amber-50 border-amber-200/60",
-  D: "bg-red-50 border-red-200/60",
-  F: "bg-red-50 border-red-200/60",
+  A: "bg-[var(--grade-green-bg)] border-[var(--grade-green-border)]",
+  B: "bg-[var(--grade-blue-bg)] border-[var(--grade-blue-border)]",
+  C: "bg-[var(--grade-amber-bg)] border-[var(--grade-amber-border)]",
+  D: "bg-[var(--grade-red-bg)] border-[var(--grade-red-border)]",
+  F: "bg-[var(--grade-red-bg)] border-[var(--grade-red-border)]",
 };
 
 const confColor: Record<string, string> = {
@@ -470,7 +470,7 @@ export default function AuditPage() {
             onChange={(e) => setUrl(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && run()}
             disabled={status === "running"}
-            className="w-full sm:flex-1 h-13 sm:h-14 px-4 sm:px-5 rounded-xl bg-white border border-border text-base font-mono text-ds-primary placeholder:text-ds-tertiary focus:outline-none focus:border-ds-olive focus:ring-2 focus:ring-ds-olive/20 disabled:opacity-50 transition-colors shadow-sm"
+            className="w-full sm:flex-1 h-13 sm:h-14 px-4 sm:px-5 rounded-xl bg-bg-card border border-border text-base font-mono text-ds-primary placeholder:text-ds-tertiary focus:outline-none focus:border-ds-olive focus:ring-2 focus:ring-ds-olive/20 disabled:opacity-50 transition-colors shadow-sm"
           />
           <button
             onClick={status === "running" ? cancel : () => run()}
@@ -512,7 +512,7 @@ export default function AuditPage() {
             key={ex}
             onClick={() => run(`https://${ex}`)}
             disabled={status === "running"}
-            className="text-xs font-mono px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-white/70 border border-border text-ds-secondary hover:border-ds-olive/50 hover:text-ds-olive cursor-pointer transition-all disabled:opacity-40 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+            className="text-xs font-mono px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-bg-card/70 border border-border text-ds-secondary hover:border-ds-olive/50 hover:text-ds-olive cursor-pointer transition-all disabled:opacity-40 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
           >
             {ex}
           </button>
@@ -529,7 +529,7 @@ export default function AuditPage() {
 
       {/* ── Error ── */}
       {status === "error" && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 sm:px-5 py-3 sm:py-4 text-sm text-ds-red">
+        <div className="rounded-xl border border-[var(--error-border)] bg-[var(--error-bg)] px-4 sm:px-5 py-3 sm:py-4 text-sm text-ds-red">
           {error}
         </div>
       )}
@@ -583,7 +583,7 @@ export default function AuditPage() {
 
           {/* ── Findings ── */}
           {result.fixPlan.length > 0 && (
-            <div className={`${inPad} py-4 sm:py-5 bg-amber-50/50 border-y border-amber-200/30`}>
+            <div className={`${inPad} py-4 sm:py-5 bg-[var(--warning-bg)] border-y border-[var(--warning-border)]`}>
               <FixPlanDisplay actions={result.fixPlan} />
             </div>
           )}
@@ -595,7 +595,7 @@ export default function AuditPage() {
 
           {/* ── Summary cards ── */}
           <div className={`${inPad} py-5 sm:py-6 grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-border`}>
-            <div className="rounded-lg bg-black/[0.02] px-3 py-2.5">
+            <div className="rounded-lg bg-[var(--surface-subtle)] px-3 py-2.5">
               <p className="text-[11px] text-ds-tertiary uppercase tracking-wider mb-0.5">Colors</p>
               <p className="text-sm font-mono text-ds-primary font-medium">
                 {result.colorSprawl.uniqueCount}
@@ -604,19 +604,19 @@ export default function AuditPage() {
                 )}
               </p>
             </div>
-            <div className="rounded-lg bg-black/[0.02] px-3 py-2.5">
+            <div className="rounded-lg bg-[var(--surface-subtle)] px-3 py-2.5">
               <p className="text-[11px] text-ds-tertiary uppercase tracking-wider mb-0.5">Spacing</p>
               <p className="text-sm font-mono text-ds-primary font-medium">
                 base-{result.spacingSprawl.detectedBase} · {result.spacingSprawl.adherence}%
               </p>
             </div>
-            <div className="rounded-lg bg-black/[0.02] px-3 py-2.5">
+            <div className="rounded-lg bg-[var(--surface-subtle)] px-3 py-2.5">
               <p className="text-[11px] text-ds-tertiary uppercase tracking-wider mb-0.5">Typography</p>
               <p className="text-sm font-mono text-ds-primary font-medium">
                 {result.typeSprawl.fontFamilies.length} families · {result.typeSprawl.fontSizes.length} sizes
               </p>
             </div>
-            <div className="rounded-lg bg-black/[0.02] px-3 py-2.5">
+            <div className="rounded-lg bg-[var(--surface-subtle)] px-3 py-2.5">
               <p className="text-[11px] text-ds-tertiary uppercase tracking-wider mb-0.5">Shape</p>
               <p className="text-sm font-mono text-ds-primary font-medium">
                 {result.miscSprawl.borderRadii.length} radii · {result.miscSprawl.boxShadows.length} shadows
