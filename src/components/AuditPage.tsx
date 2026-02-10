@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useState, useCallback, useEffect, useRef, useLayoutEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { AuditResult, CategoryScore } from "@/lib/audit/types";
 import ScoreRing from "./ScoreRing";
 import FixPlanDisplay from "./FixPlanDisplay";
@@ -76,6 +77,81 @@ const EXAMPLES = ["stripe.com", "linear.app", "vercel.com"];
 
 /* ---- Browser chrome ---- */
 
+/** Share button with portaled tooltip so it isn't clipped by the card and sits below sticky elements (z-20). */
+function ShareButtonWithTooltip({ onShare, shared }: { onShare: () => void; shared: boolean }) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [tooltipRect, setTooltipRect] = useState<{ left: number; top: number } | null>(null);
+
+  const updateRect = useCallback(() => {
+    if (!shared || !buttonRef.current) {
+      setTooltipRect(null);
+      return;
+    }
+    const rect = buttonRef.current.getBoundingClientRect();
+    setTooltipRect({
+      left: rect.left - 8,
+      top: rect.top + rect.height / 2,
+    });
+  }, [shared]);
+
+  useLayoutEffect(() => {
+    if (!shared) {
+      setTooltipRect(null);
+      return;
+    }
+    updateRect();
+    window.addEventListener("scroll", updateRect, true);
+    window.addEventListener("resize", updateRect);
+    return () => {
+      window.removeEventListener("scroll", updateRect, true);
+      window.removeEventListener("resize", updateRect);
+    };
+  }, [shared, updateRect]);
+
+  const tooltipEl =
+    typeof document !== "undefined" &&
+    shared &&
+    tooltipRect &&
+    createPortal(
+      <span
+        className="fixed whitespace-nowrap rounded-md bg-ds-olive px-2.5 py-1 text-[11px] font-medium text-white shadow-lg pointer-events-none transition-opacity duration-200 opacity-100"
+        style={{
+          left: tooltipRect.left,
+          top: tooltipRect.top,
+          transform: "translate(-100%, -50%)",
+          zIndex: 20,
+        }}
+      >
+        Link copied — go share it!
+      </span>,
+      document.body
+    );
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        onClick={onShare}
+        className="group/share relative flex items-center justify-center w-7 h-7 rounded-lg cursor-pointer transition-all duration-150 hover:bg-ds-olive/10 active:scale-95"
+        title="Copy report link"
+      >
+        {shared ? (
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-ds-olive transition-colors">
+            <path d="M2.5 7.5L5.5 10.5L11.5 3.5" />
+          </svg>
+        ) : (
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" className="text-ds-tertiary group-hover/share:text-ds-olive transition-colors">
+            <path d="M8.5 1.5h4v4" />
+            <path d="M12.5 1.5L7 7" />
+            <path d="M11 8v3.5a1 1 0 0 1-1 1H2.5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1H6" />
+          </svg>
+        )}
+      </button>
+      {tooltipEl}
+    </>
+  );
+}
+
 function BrowserChrome({
   url,
   ghost,
@@ -127,29 +203,7 @@ function BrowserChrome({
       {/* Share button (results) or spacer (ghost) */}
       <div className="w-8 sm:w-10 shrink-0 flex justify-end">
         {onShare && (
-          <button
-            onClick={onShare}
-            className="group/share relative flex items-center justify-center w-7 h-7 rounded-lg cursor-pointer transition-all duration-150 hover:bg-ds-olive/10 active:scale-95"
-            title="Copy report link"
-          >
-            {shared ? (
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-ds-olive transition-colors">
-                <path d="M2.5 7.5L5.5 10.5L11.5 3.5" />
-              </svg>
-            ) : (
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" className="text-ds-tertiary group-hover/share:text-ds-olive transition-colors">
-                <path d="M8.5 1.5h4v4" />
-                <path d="M12.5 1.5L7 7" />
-                <path d="M11 8v3.5a1 1 0 0 1-1 1H2.5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1H6" />
-              </svg>
-            )}
-            {/* Tooltip */}
-            <span
-              className={`absolute right-full mr-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md bg-ds-olive px-2.5 py-1 text-[11px] font-medium text-white shadow-lg pointer-events-none transition-all duration-200 ${shared ? "opacity-100 translate-x-0" : "opacity-0 translate-x-1"}`}
-            >
-              Link copied — go share it!
-            </span>
-          </button>
+          <ShareButtonWithTooltip onShare={onShare} shared={!!shared} />
         )}
       </div>
     </div>

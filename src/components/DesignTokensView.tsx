@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useLayoutEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import {
   DesignTokensResult, TokenGroup, CSSToken, TokenCategory,
   TokenInsights, TokenNearDuplicate, TokenShadowedValue,
@@ -247,6 +248,8 @@ function ColorTokenGrid({ tokens }: { tokens: CSSToken[] }) {
 function ColorSwatch({ token }: { token: CSSToken }) {
   const [hover, setHover] = useState(false);
   const [copied, setCopied] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [tooltipRect, setTooltipRect] = useState<{ left: number; top: number } | null>(null);
 
   const copy = () => {
     navigator.clipboard.writeText(`var(${token.name})`);
@@ -254,13 +257,63 @@ function ColorSwatch({ token }: { token: CSSToken }) {
     setTimeout(() => setCopied(false), 1200);
   };
 
+  const updateRect = useCallback(() => {
+    if (!hover || !wrapRef.current) return;
+    const rect = wrapRef.current.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const padding = 12;
+    const maxHalfWidth = 140;
+    const clampedX = Math.max(padding + maxHalfWidth, Math.min(window.innerWidth - padding - maxHalfWidth, centerX));
+    setTooltipRect({
+      left: clampedX,
+      top: rect.top,
+    });
+  }, [hover]);
+
+  useLayoutEffect(() => {
+    if (!hover) {
+      setTooltipRect(null);
+      return;
+    }
+    updateRect();
+    window.addEventListener("scroll", updateRect, true);
+    window.addEventListener("resize", updateRect);
+    return () => {
+      window.removeEventListener("scroll", updateRect, true);
+      window.removeEventListener("resize", updateRect);
+    };
+  }, [hover, updateRect]);
+
   const shortName = token.name
     .replace(/^--/, "")
     .replace(/^(?:color|clr|c)-/i, "")
     .replace(/-/g, " ");
 
+  const tooltipEl =
+    typeof document !== "undefined" &&
+    hover &&
+    tooltipRect &&
+    createPortal(
+      <div
+        className="fixed bg-bg-elevated border border-border rounded-lg px-2.5 py-1.5 shadow-lg pointer-events-none whitespace-nowrap transition-opacity duration-150"
+        style={{
+          left: tooltipRect.left,
+          top: tooltipRect.top - 6,
+          transform: "translate(-50%, -100%)",
+          zIndex: 20,
+        }}
+      >
+        <p className="text-[10px] font-mono text-ds-secondary">
+          {copied ? "Copied!" : shortName}
+        </p>
+        <p className="text-[10px] font-mono text-ds-tertiary">{token.value}</p>
+      </div>,
+      document.body
+    );
+
   return (
     <div
+      ref={wrapRef}
       className="relative group/swatch"
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -271,15 +324,7 @@ function ColorSwatch({ token }: { token: CSSToken }) {
         style={{ backgroundColor: token.value }}
         title={`${token.name}: ${token.value}`}
       />
-
-      {hover && (
-        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 z-50 bg-bg-elevated border border-border rounded-lg px-2.5 py-1.5 shadow-lg pointer-events-none whitespace-nowrap">
-          <p className="text-[10px] font-mono text-ds-secondary">
-            {copied ? "Copied!" : shortName}
-          </p>
-          <p className="text-[10px] font-mono text-ds-tertiary">{token.value}</p>
-        </div>
-      )}
+      {tooltipEl}
     </div>
   );
 }

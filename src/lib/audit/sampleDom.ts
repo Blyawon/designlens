@@ -111,21 +111,22 @@ async function sampleDomOnce(
       "--mute-audio",
       "--hide-scrollbars",
       "--disk-cache-size=0",
-      /* Additional stability/memory args — these are the ones that
-         prevent most "browser crashed" errors on resource-heavy sites */
+      /* Additional stability/memory args */
       "--disable-webgl",                  // WebGL can crash the GPU process even with --disable-gpu
       "--disable-webgl2",
       "--disable-software-rasterizer",    // no fallback software rendering
-      "--disable-features=IsolateOrigins,site-per-process", // single process tree = less memory
       "--disable-ipc-flooding-protection",
       "--disable-component-update",
       "--disable-domain-reliability",
       "--disable-print-preview",
       "--disable-speech-api",
-      "--no-zygote",                      // skip zygote process — fewer child processes
+      /* NOTE: --single-process and --no-zygote removed intentionally.
+         They reduce memory but make Chromium extremely crash-prone
+         because one renderer failure kills the entire browser process.
+         Better to use more memory than to crash on every heavy page. */
       ...(isServerless ? [
-        "--single-process",               // everything in one process on serverless (less memory)
-        "--js-flags=--max-old-space-size=256", // cap V8 heap to 256MB per process
+        "--disable-features=IsolateOrigins,site-per-process",
+        "--js-flags=--max-old-space-size=512", // cap V8 heap — 512MB leaves room for the rest
       ] : []),
     ];
 
@@ -145,23 +146,29 @@ async function sampleDomOnce(
 
     checkAbort();
 
-    const VIEWPORT_WIDTH = 1280;
-    const VIEWPORT_HEIGHT = isServerless ? 720 : 900;
+    /* Aggressive mode: smaller viewport + disable JS.
+       Most modern sites SSR their HTML/CSS, so we still get valid
+       computed styles without executing any client-side JavaScript.
+       This is the single biggest memory saving — heavy SPAs can
+       allocate 500MB+ just in JS heap. */
+    const VIEWPORT_WIDTH = aggressiveMode ? 1024 : 1280;
+    const VIEWPORT_HEIGHT = aggressiveMode ? 600 : (isServerless ? 720 : 900);
 
     const page = await browser.newPage({
       viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
+      javaScriptEnabled: !aggressiveMode,
       userAgent:
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     });
     /* Shorter default timeout — fail fast rather than hang */
-    page.setDefaultTimeout(isServerless ? 20_000 : 30_000);
+    page.setDefaultTimeout(aggressiveMode ? 15_000 : (isServerless ? 20_000 : 30_000));
 
     /* Block heavy resources to save memory.
        Normal serverless: block images, media, fonts (we only need DOM + stylesheets).
        Aggressive (retry): also block scripts, iframes, and other heavy fetches.
        Locally: keep fonts + images for screenshots / font specimens, block media. */
     const blockTypes: string[] = aggressiveMode
-      ? ["media", "image", "font", "other"]
+      ? ["media", "image", "font", "script", "other"]
       : isServerless
         ? ["media", "image", "font"]
         : ["media"];
@@ -677,6 +684,14 @@ async function sampleDomOnce(
       cssTokens,
     };
   } finally {
-    if (browser) await browser.close();
+    if (browser) {
+      /* Race browser.close() against a 5s timeout.
+         A crashed browser can hang on close() indefinitely,
+         and we need to free the memory before a potential retry. */
+      await Promise.race([
+        browser.close().catch(() => {}),
+        new Promise((r) => setTimeout(r, 5_000)),
+      ]);
+    }
   }
 }
