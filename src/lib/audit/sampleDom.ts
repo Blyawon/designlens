@@ -38,29 +38,47 @@ const MAX_SCROLL_DEPTH = 4000;
 /* Max screenshot height in px. Caps memory usage on tall pages. */
 const MAX_SCREENSHOT_HEIGHT = 5000;
 
+function isCrashError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    msg.includes("Target page, context or browser has been closed") ||
+    msg.includes("Target closed") ||
+    msg.includes("Browser has been closed") ||
+    msg.includes("Protocol error") ||
+    msg.includes("crashed")
+  );
+}
+
 export async function sampleDom(
   url: string,
   onProgress?: ProgressCallback,
   signal?: AbortSignal
 ): Promise<SampleResult> {
-  /* Retry wrapper — browser crashes are often non-deterministic.
-     A single retry with more aggressive resource blocking catches
-     most flaky OOM cases. */
+  /* Retry strategy for non-deterministic crashes:
+     1. Normal attempt — full JS, full viewport, all resources
+     2. If crash → plain retry (same settings, fresh container/process —
+        catches intermittent OOM caused by GC timing or JIT variance)
+     3. If crash again → aggressive mode (no JS, blocked scripts,
+        smaller viewport — the nuclear option for truly heavy pages) */
+
+  // Attempt 1: normal
   try {
     return await sampleDomOnce(url, onProgress, signal, false);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const isCrash =
-      msg.includes("Target page, context or browser has been closed") ||
-      msg.includes("Target closed") ||
-      msg.includes("Browser has been closed") ||
-      msg.includes("Protocol error") ||
-      msg.includes("crashed");
-    if (!isCrash || signal?.aborted) throw err;
-    /* One retry with aggressive resource blocking */
-    onProgress?.({ phase: "retrying", message: "Browser crashed — retrying with lighter settings…" });
-    return await sampleDomOnce(url, onProgress, signal, true);
+    if (!isCrashError(err) || signal?.aborted) throw err;
   }
+
+  // Attempt 2: plain retry — same settings, fresh browser
+  onProgress?.({ phase: "retrying", message: "Browser crashed — retrying…" });
+  try {
+    return await sampleDomOnce(url, onProgress, signal, false);
+  } catch (err) {
+    if (!isCrashError(err) || signal?.aborted) throw err;
+  }
+
+  // Attempt 3: aggressive — no JS, smaller viewport, blocked scripts
+  onProgress?.({ phase: "retrying", message: "Crashed again — retrying without JavaScript…" });
+  return await sampleDomOnce(url, onProgress, signal, true);
 }
 
 async function sampleDomOnce(
