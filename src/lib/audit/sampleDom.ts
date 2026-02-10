@@ -24,8 +24,12 @@ const TEXT_SELECTORS = [
 
 /* Reduced caps — fewer elements = faster analysis without
    meaningful loss of signal (diminishing returns past ~1200) */
-const MAX_TEXT = 1500;
-const MAX_LAYOUT = 2000;
+const MAX_TEXT_DEFAULT = 1500;
+const MAX_LAYOUT_DEFAULT = 2000;
+
+/* Aggressive mode caps — used on retry after a crash */
+const MAX_TEXT_AGGRESSIVE = 800;
+const MAX_LAYOUT_AGGRESSIVE = 1000;
 
 /* Max pixel depth to scroll when triggering lazy content.
    Prevents us from loading an infinite-scroll page's entire feed. */
@@ -39,14 +43,46 @@ export async function sampleDom(
   onProgress?: ProgressCallback,
   signal?: AbortSignal
 ): Promise<SampleResult> {
+  /* Retry wrapper — browser crashes are often non-deterministic.
+     A single retry with more aggressive resource blocking catches
+     most flaky OOM cases. */
+  try {
+    return await sampleDomOnce(url, onProgress, signal, false);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const isCrash =
+      msg.includes("Target page, context or browser has been closed") ||
+      msg.includes("Target closed") ||
+      msg.includes("Browser has been closed") ||
+      msg.includes("Protocol error") ||
+      msg.includes("crashed");
+    if (!isCrash || signal?.aborted) throw err;
+    /* One retry with aggressive resource blocking */
+    onProgress?.({ phase: "retrying", message: "Browser crashed — retrying with lighter settings…" });
+    return await sampleDomOnce(url, onProgress, signal, true);
+  }
+}
+
+async function sampleDomOnce(
+  url: string,
+  onProgress: ProgressCallback | undefined,
+  signal: AbortSignal | undefined,
+  aggressiveMode: boolean
+): Promise<SampleResult> {
   let browser: Browser | null = null;
 
-  /* Utility: check if we should bail out early */
+  /* Utility: check if we should bail out early (abort or crash) */
   function checkAbort() {
     if (signal?.aborted) {
       throw new DOMException("Audit cancelled", "AbortError");
     }
+    if (pageCrashed) {
+      throw new Error("Target page, context or browser has been closed");
+    }
   }
+
+  /* Declared here, assigned after page is created */
+  let pageCrashed = false;
 
   try {
     onProgress?.({ phase: "launching", message: "Launching browser…" });
@@ -75,6 +111,22 @@ export async function sampleDom(
       "--mute-audio",
       "--hide-scrollbars",
       "--disk-cache-size=0",
+      /* Additional stability/memory args — these are the ones that
+         prevent most "browser crashed" errors on resource-heavy sites */
+      "--disable-webgl",                  // WebGL can crash the GPU process even with --disable-gpu
+      "--disable-webgl2",
+      "--disable-software-rasterizer",    // no fallback software rendering
+      "--disable-features=IsolateOrigins,site-per-process", // single process tree = less memory
+      "--disable-ipc-flooding-protection",
+      "--disable-component-update",
+      "--disable-domain-reliability",
+      "--disable-print-preview",
+      "--disable-speech-api",
+      "--no-zygote",                      // skip zygote process — fewer child processes
+      ...(isServerless ? [
+        "--single-process",               // everything in one process on serverless (less memory)
+        "--js-flags=--max-old-space-size=256", // cap V8 heap to 256MB per process
+      ] : []),
     ];
 
     if (isServerless) {
@@ -105,17 +157,40 @@ export async function sampleDom(
     page.setDefaultTimeout(isServerless ? 20_000 : 30_000);
 
     /* Block heavy resources to save memory.
-       On serverless: block images, media, fonts (we only need DOM + stylesheets).
+       Normal serverless: block images, media, fonts (we only need DOM + stylesheets).
+       Aggressive (retry): also block scripts, iframes, and other heavy fetches.
        Locally: keep fonts + images for screenshots / font specimens, block media. */
-    const blockTypes = isServerless
-      ? ["media", "image", "font"]
-      : ["media"];
+    const blockTypes: string[] = aggressiveMode
+      ? ["media", "image", "font", "other"]
+      : isServerless
+        ? ["media", "image", "font"]
+        : ["media"];
+
+    /* In aggressive mode, also block known heavy third-party domains */
+    const blockDomains = aggressiveMode
+      ? [
+          "googletagmanager.com", "google-analytics.com", "analytics.",
+          "facebook.net", "doubleclick.net", "ads.", "adservice.",
+          "hotjar.com", "intercom.io", "segment.com", "sentry.io",
+          "fullstory.com", "mixpanel.com", "amplitude.com",
+          "youtube.com", "vimeo.com", "player.",
+        ]
+      : [];
 
     await page.route("**/*", (route) => {
-      const type = route.request().resourceType();
+      const req = route.request();
+      const type = req.resourceType();
       if (blockTypes.includes(type)) return route.abort();
+      if (blockDomains.length > 0) {
+        const reqUrl = req.url().toLowerCase();
+        if (blockDomains.some((d) => reqUrl.includes(d))) return route.abort();
+      }
       return route.continue();
     });
+
+    /* Listen for page crashes — sets the flag that checkAbort() reads,
+       so the next checkpoint throws immediately instead of hanging */
+    page.on("crash", () => { pageCrashed = true; });
 
     checkAbort();
     onProgress?.({ phase: "loading", message: `Loading ${url}…` });
@@ -210,12 +285,13 @@ export async function sampleDom(
 
     checkAbort();
 
-    /* Scroll page to trigger lazy-rendered content, capped at MAX_SCROLL_DEPTH.
-       Instead of scrolling to the very bottom of a 20,000px page,
-       we scroll to a reasonable depth and come back. */
+    /* Scroll page to trigger lazy-rendered content, capped at scroll depth.
+       In aggressive mode, skip scrolling entirely — it loads more content
+       which is the #1 cause of OOM on heavy sites. */
+    const scrollDepth = aggressiveMode ? 0 : MAX_SCROLL_DEPTH;
     const scrollTarget = await page.evaluate(
       (maxDepth: number) => Math.min(document.body.scrollHeight, maxDepth),
-      MAX_SCROLL_DEPTH
+      scrollDepth
     );
     await page.evaluate((target: number) => window.scrollTo(0, target), scrollTarget);
     /* Use waitForFunction instead of blind waitForTimeout — waits until
@@ -433,7 +509,11 @@ export async function sampleDom(
 
         return results;
       },
-      { textSel: TEXT_SELECTORS, maxText: MAX_TEXT, maxLayout: MAX_LAYOUT }
+      {
+        textSel: TEXT_SELECTORS,
+        maxText: aggressiveMode ? MAX_TEXT_AGGRESSIVE : MAX_TEXT_DEFAULT,
+        maxLayout: aggressiveMode ? MAX_LAYOUT_AGGRESSIVE : MAX_LAYOUT_DEFAULT,
+      }
     );
 
     onProgress?.({
@@ -505,10 +585,11 @@ export async function sampleDom(
 
     // ---- extract CSS custom properties (design tokens) ----
     onProgress?.({ phase: "fonts", message: "Extracting design tokens…" });
-    const cssTokens: CSSToken[] = await page.evaluate(() => {
+    const tokenLimit = aggressiveMode ? 200 : 500;
+    const cssTokens: CSSToken[] = await page.evaluate((maxTokens: number) => {
       const tokens: { name: string; value: string; rawValue?: string }[] = [];
       const seen = new Set<string>();
-      const MAX_TOKENS = 500;
+      const MAX_TOKENS = maxTokens;
 
       try {
         for (const sheet of document.styleSheets) {
@@ -550,7 +631,7 @@ export async function sampleDom(
       /* Sort alphabetically for consistent output */
       tokens.sort((a, b) => a.name.localeCompare(b.name));
       return tokens;
-    });
+    }, tokenLimit);
 
     checkAbort();
 

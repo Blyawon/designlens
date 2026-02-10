@@ -78,22 +78,24 @@ const patterns: ErrorPattern[] = [
     message: "The website returned an empty response. It may be down or blocking automated requests.",
   },
 
-  /* ---- Playwright browser crashes ---- */
+  /* ---- Playwright browser crashes ----
+     Note: sampleDom already retries once with lighter settings before
+     these messages are shown, so if we get here it failed twice. */
   {
     match: "Target page, context or browser has been closed",
-    message: "The browser crashed while loading this page. The site may be too resource-heavy or is blocking headless browsers.",
+    message: "The browser crashed while loading this page — even after retrying with lighter settings. This site is likely too resource-heavy for our analysis. Try a specific subpage instead of the homepage.",
   },
   {
     match: "Target closed",
-    message: "The browser tab crashed while loading this page. Try a simpler URL.",
+    message: "The browser tab crashed while loading this page. Try a specific subpage (e.g. /about or /pricing) — homepages tend to be the heaviest.",
   },
   {
     match: "Browser has been closed",
-    message: "The browser process ended unexpectedly. This usually means the page used too much memory.",
+    message: "The browser ran out of memory loading this page. Try a lighter subpage instead of the homepage.",
   },
   {
     match: "Protocol error",
-    message: "Lost connection to the browser engine. The page may have caused it to crash.",
+    message: "Lost connection to the browser engine. The page may have caused it to crash. Try a specific subpage instead.",
   },
   {
     match: "Navigation interrupted",
