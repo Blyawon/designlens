@@ -250,10 +250,19 @@ async function sampleDomOnce(
       const finalArgs = [...baseArgs, "--disable-gpu", ...extraArgs];
       console.log("[audit] Chrome args headless flags:",
         finalArgs.filter(a => a.startsWith("--headless")));
+
+      /* CRITICAL: headless must be FALSE here.
+         When headless:true, Playwright OVERRIDES any --headless=shell
+         in our args with --headless=new (verified via UA string test).
+         New headless = full browser compositor = 200-400MB more RAM.
+         With headless:false, Playwright doesn't add any --headless flag,
+         and our --headless=shell (in extraArgs) goes through to Chrome.
+         Chrome still runs headless — the flag controls it, not Playwright's
+         option. CDP works identically in both modes. */
       browser = await chromium.launch({
         args: finalArgs,
         executablePath: await sparticuzChromium.executablePath(),
-        headless: true,
+        headless: false,
       });
       console.log("[audit] Chrome launched successfully");
     } else {
