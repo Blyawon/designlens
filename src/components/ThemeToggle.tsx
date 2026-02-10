@@ -1,24 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { sparkleTheme } from "@/lib/sparkles";
 
 /**
- * Animated sun/moon toggle.
+ * Animated sun/moon toggle with canvas-confetti sparkle burst.
  *
- * How the animation works:
- * - Sun has a center circle (r=6) + 8 rays (short lines radiating out).
- * - Moon is a smaller circle (r=5) with a "mask" circle that overlaps to
- *   create a crescent shape.
- * - On toggle: the whole SVG rotates 180°, rays scale to 0 and fade,
- *   the mask circle slides in from the right, and the center circle shrinks.
- * - All animation is CSS transition — no JS animation frames, buttery 60fps.
+ * On click:
+ * 1. Button squeezes down then springs back (Web Animations API)
+ * 2. Star-shaped confetti burst outward — icy blue for night, warm gold for day
+ * 3. SVG icon rotates 180° with rays/crescent morph
  */
 export default function ThemeToggle() {
   const [dark, setDark] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
 
-  /* Read initial state from the DOM (set by the inline script in layout).
-     We wait for mount to avoid hydration mismatch. */
   useEffect(() => {
     setDark(document.documentElement.classList.contains("dark"));
     setMounted(true);
@@ -26,21 +23,43 @@ export default function ThemeToggle() {
 
   const toggle = () => {
     const next = !dark;
-    setDark(next);
-    document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("theme", next ? "dark" : "light");
+    const btn = btnRef.current;
+
+    /* 1. Squeeze & bounce via Web Animations API */
+    btn?.animate(
+      [
+        { transform: "scale(1)" },
+        { transform: "scale(0.75)", offset: 0.18 },
+        { transform: "scale(1.18)", offset: 0.48 },
+        { transform: "scale(0.96)", offset: 0.72 },
+        { transform: "scale(1)" },
+      ],
+      { duration: 450, easing: "cubic-bezier(0.34, 1.56, 0.64, 1)" }
+    );
+
+    /* 2. Confetti stars — slightly delayed so they burst at the bounce peak */
+    setTimeout(() => {
+      if (btn) sparkleTheme(btn, next);
+    }, 100);
+
+    /* 3. Theme change — slight delay for perceived cause → effect */
+    setTimeout(() => {
+      setDark(next);
+      document.documentElement.classList.toggle("dark", next);
+      localStorage.setItem("theme", next ? "dark" : "light");
+    }, 70);
   };
 
-  /* Don't render until mounted to avoid flash of wrong icon */
   if (!mounted) {
-    return <div className="w-9 h-9" />;
+    return <div className="w-10 h-10" />;
   }
 
   return (
     <button
+      ref={btnRef}
       onClick={toggle}
       aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
-      className="relative w-9 h-9 rounded-full flex items-center justify-center cursor-pointer border border-border/60 bg-bg-card/80 hover:bg-bg-elevated transition-colors duration-300 shadow-sm backdrop-blur-sm"
+      className="relative w-10 h-10 rounded-full flex items-center justify-center cursor-pointer border border-border/60 bg-bg-card/80 hover:bg-bg-elevated transition-colors duration-300 shadow-sm backdrop-blur-sm"
     >
       <svg
         viewBox="0 0 24 24"
@@ -48,7 +67,7 @@ export default function ThemeToggle() {
         className="w-[18px] h-[18px] transition-transform duration-500 ease-in-out"
         style={{ transform: dark ? "rotate(180deg)" : "rotate(0deg)" }}
       >
-        {/* Center circle — larger for sun, smaller for moon */}
+        {/* Sun body / moon body */}
         <circle
           cx="12"
           cy="12"
@@ -56,9 +75,7 @@ export default function ThemeToggle() {
           className="transition-all duration-500 ease-in-out"
           style={{ r: dark ? 5 : 5.5 }}
         />
-
-        {/* Moon mask — overlapping circle that creates the crescent.
-            Slides in from right (cx 20→15) when dark mode activates. */}
+        {/* Moon mask — slides in for crescent */}
         <circle
           cx={dark ? 15.5 : 20}
           cy={dark ? 9 : 5}
@@ -66,22 +83,16 @@ export default function ThemeToggle() {
           className="transition-all duration-500 ease-in-out"
           style={{ r: dark ? 5 : 0 }}
         />
-
-        {/* Sun rays — 8 short lines radiating from center.
-            Scale to 0 and fade when switching to moon. */}
+        {/* Sun rays — scale to 0 in dark mode */}
         {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => {
           const rad = (angle * Math.PI) / 180;
-          const x1 = 12 + Math.cos(rad) * 8;
-          const y1 = 12 + Math.sin(rad) * 8;
-          const x2 = 12 + Math.cos(rad) * 10.5;
-          const y2 = 12 + Math.sin(rad) * 10.5;
           return (
             <line
               key={angle}
-              x1={x1}
-              y1={y1}
-              x2={x2}
-              y2={y2}
+              x1={12 + Math.cos(rad) * 8}
+              y1={12 + Math.sin(rad) * 8}
+              x2={12 + Math.cos(rad) * 10.5}
+              y2={12 + Math.sin(rad) * 10.5}
               stroke="var(--text-primary)"
               strokeWidth="2"
               strokeLinecap="round"

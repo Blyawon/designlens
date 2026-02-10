@@ -188,9 +188,54 @@
   100% { transform: translate(0, 0) scale(1); }
 }
 
+/* ── Ambient particles ───────────────────────────────────────── */
+
+/* Stars (dark mode) — gentle opacity pulse.
+   --twinkle-max is set per-particle for varied brightness. */
+@keyframes twinkle {
+  0%, 100% { opacity: 0; }
+  50%      { opacity: var(--twinkle-max, 0.5); }
+}
+
+/* Dust motes (light mode) — drift slowly while fading in/out.
+   --mote-max, --mote-dx, --mote-dy set per-particle. */
+@keyframes float-mote {
+  0%   { opacity: 0; transform: translate(0, 0); }
+  25%  { opacity: var(--mote-max, 0.2); }
+  75%  { opacity: var(--mote-max, 0.2); }
+  100% { opacity: 0; transform: translate(var(--mote-dx, 20px), var(--mote-dy, -30px)); }
+}
+
+/* Indeterminate loading bar — slides back and forth within track */
+@keyframes loading-slide {
+  0%   { left: -30%; }
+  50%  { left: 65%; }
+  100% { left: -30%; }
+}
+
+/* Error shake — horizontal wobble like macOS wrong-password */
+@keyframes error-shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 50%, 90% { transform: translateX(-4px); }
+  30%, 70% { transform: translateX(4px); }
+}
+
 /* ═══════════════════════════════════════════════════════════════
    BASE STYLES
    ═══════════════════════════════════════════════════════════════ */
+
+/* Kill browser default purple focus outline on all buttons globally.
+   Keyboard focus gets a clean olive ring via :focus-visible instead.
+   Inputs keep :focus (not :focus-visible) because the user needs to
+   see which text field is active while typing. */
+button:focus {
+  outline: none;
+}
+button:focus-visible {
+  outline: 2px solid var(--olive);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
 
 /* Smooth transition for theme changes — applied to bg and text.
    Only targets properties that change, avoids janky animation on

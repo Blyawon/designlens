@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import ThemeToggle from "@/components/ThemeToggle";
+import AmbientParticles from "@/components/AmbientParticles";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -44,6 +45,8 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} antialiased min-h-screen`}
       >
+        {/* Ambient background particles — stars at night, dust motes by day */}
+        <AmbientParticles />
         {/* Theme toggle — fixed top-right */}
         <div className="fixed top-4 right-4 sm:top-5 sm:right-6 z-50">
           <ThemeToggle />

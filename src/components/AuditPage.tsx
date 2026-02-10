@@ -303,11 +303,55 @@ export default function AuditPage() {
      when the user clicks Cancel or the timeout fires. */
   const abortRef = useRef<AbortController | null>(null);
 
+  /* Bumps on every new error to re-trigger the shake animation. */
+  const [errorKey, setErrorKey] = useState(0);
+  const showError = useCallback((msg: string) => {
+    setError(msg);
+    setErrorKey((k) => k + 1);
+  }, []);
+
+  /* ── Button animation system ── */
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  /* Squeeze-bounce on Analyze click via Web Animations API */
+  const pressAnalyze = useCallback(() => {
+    btnRef.current?.animate(
+      [
+        { transform: "scale(1)" },
+        { transform: "scale(0.92)", offset: 0.2 },
+        { transform: "scale(1.05)", offset: 0.55 },
+        { transform: "scale(0.98)", offset: 0.8 },
+        { transform: "scale(1)" },
+      ],
+      { duration: 350, easing: "cubic-bezier(0.34, 1.56, 0.64, 1)" }
+    );
+  }, []);
+
+  /* Shake on Cancel click — emphasize the destructive action, then reset */
   const cancel = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setStatus("idle");
-    setProgress("");
+    const btn = btnRef.current;
+    if (btn) {
+      btn.animate(
+        [
+          { transform: "translateX(0)" },
+          { transform: "translateX(-5px)", offset: 0.1 },
+          { transform: "translateX(5px)", offset: 0.25 },
+          { transform: "translateX(-4px)", offset: 0.4 },
+          { transform: "translateX(4px)", offset: 0.55 },
+          { transform: "translateX(-2px)", offset: 0.7 },
+          { transform: "translateX(2px)", offset: 0.85 },
+          { transform: "translateX(0)" },
+        ],
+        { duration: 400, easing: "ease-in-out" }
+      );
+    }
+    /* Slight delay so the shake is visible before the state resets */
+    setTimeout(() => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+      setStatus("idle");
+      setProgress("");
+    }, 200);
   }, []);
 
   /* Clean up on unmount (e.g. user navigates away) */
@@ -327,6 +371,7 @@ export default function AuditPage() {
       abortRef.current = controller;
 
       if (overrideUrl) setUrl(overrideUrl);
+      pressAnalyze();
       setStatus("running");
       setProgress("Connecting…");
       setPhase("launching");
@@ -338,7 +383,7 @@ export default function AuditPage() {
          abort the request so the user isn't left hanging. */
       const timer = setTimeout(() => {
         controller.abort();
-        setError("The audit timed out. The target site may be too complex or slow to respond. Try a simpler page.");
+        showError("The audit timed out. The target site may be too complex or slow to respond. Try a simpler page.");
         setStatus("error");
       }, CLIENT_TIMEOUT_MS);
 
@@ -376,7 +421,7 @@ export default function AuditPage() {
               } else if (evt.type === "error") throw new Error(evt.message);
             } catch (e) {
               if (e instanceof Error && e.message) {
-                setError(e.message);
+                showError(e.message);
                 setStatus("error");
               }
             }
@@ -384,7 +429,7 @@ export default function AuditPage() {
         }
       } catch (e: unknown) {
         if (e instanceof DOMException && e.name === "AbortError") return;
-        setError(
+        showError(
           e instanceof Error
             ? e.message
             : "Something unexpected happened. Check your connection and try again."
@@ -394,7 +439,7 @@ export default function AuditPage() {
         clearTimeout(timer);
       }
     },
-    [url]
+    [url, pressAnalyze, showError]
   );
 
   const scoreFor = (name: string): CategoryScore | undefined =>
@@ -472,35 +517,51 @@ export default function AuditPage() {
             disabled={status === "running"}
             className="w-full sm:flex-1 h-13 sm:h-14 px-4 sm:px-5 rounded-xl bg-bg-card border border-border text-base font-mono text-ds-primary placeholder:text-ds-tertiary focus:outline-none focus:border-ds-olive focus:ring-2 focus:ring-ds-olive/20 disabled:opacity-50 transition-colors shadow-sm"
           />
-          <button
-            onClick={status === "running" ? cancel : () => run()}
-            disabled={status !== "running" && !url.trim()}
-            className="relative h-13 sm:h-14 rounded-xl text-base font-semibold cursor-pointer whitespace-nowrap shadow-sm shrink-0 disabled:opacity-50 overflow-hidden transition-colors duration-300 ease-in-out"
-            style={{
-              /* Fixed width based on the wider label so the button never jumps. */
-              minWidth: "7.5rem",
-            }}
-          >
-            {/* Invisible sizer — always rendered so the button keeps
-                the width of the longer word ("Analyze"). */}
-            <span className="invisible px-6 sm:px-8" aria-hidden="true">Analyze</span>
+          {/* ── Action button ── */}
+          <div className="relative shrink-0 group" style={{ minWidth: "7.5rem" }}>
+            <button
+              ref={btnRef}
+              onClick={status === "running" ? cancel : () => run()}
+              disabled={status !== "running" && !url.trim()}
+              className="relative h-13 sm:h-14 rounded-xl text-base font-semibold cursor-pointer whitespace-nowrap shadow-sm shrink-0 disabled:opacity-50 overflow-hidden transition-colors duration-300 ease-in-out w-full"
+            >
+              {/* Invisible sizer keeps button width stable */}
+              <span className="invisible px-6 sm:px-8" aria-hidden="true">Analyze</span>
 
-            {/* Cross-fade in place — pure opacity, no movement */}
-            <span
-              className={`absolute inset-0 flex items-center justify-center rounded-xl text-white transition-opacity duration-300 ease-in-out bg-ds-olive hover:bg-ds-olive/90 ${
-                status === "running" ? "opacity-0 pointer-events-none" : "opacity-100"
-              }`}
-            >
-              Analyze
-            </span>
-            <span
-              className={`absolute inset-0 flex items-center justify-center rounded-xl text-white transition-opacity duration-300 ease-in-out bg-ds-red/80 hover:bg-ds-red/90 ${
-                status === "running" ? "opacity-100" : "opacity-0 pointer-events-none"
-              }`}
-            >
-              Cancel
-            </span>
-          </button>
+              {/* Layer 1: Analyze label (olive) */}
+              <span
+                className={`absolute inset-0 flex items-center justify-center rounded-xl text-white transition-opacity duration-300 ease-in-out bg-ds-olive hover:bg-ds-olive/90 ${
+                  status === "running" ? "opacity-0 pointer-events-none" : "opacity-100"
+                }`}
+              >
+                Analyze
+              </span>
+
+              {/* Layer 2: Loading bar (muted red) — replaces Cancel label */}
+              <span
+                className={`absolute inset-0 flex items-center justify-center rounded-xl transition-opacity duration-300 ease-in-out bg-ds-red/80 ${
+                  status === "running" ? "opacity-100" : "opacity-0 pointer-events-none"
+                }`}
+              >
+                {/* Indeterminate loading bar: 32px track with sliding fill */}
+                <span className="relative w-8 h-[3px] rounded-full bg-white/20 overflow-hidden">
+                  <span
+                    className="absolute inset-y-0 w-2/3 rounded-full bg-white/70"
+                    style={{ animation: "loading-slide 1.4s ease-in-out infinite" }}
+                  />
+                </span>
+              </span>
+            </button>
+
+            {/* Tooltip — appears on hover only during running state */}
+            {status === "running" && (
+              <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 px-2.5 py-1 rounded-md bg-bg-elevated border border-border text-[11px] text-ds-secondary whitespace-nowrap shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-30">
+                Stop analysis
+                {/* Tooltip arrow */}
+                <span className="absolute left-1/2 -translate-x-1/2 -top-1 w-2 h-2 rotate-45 bg-bg-elevated border-l border-t border-border" />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -529,7 +590,11 @@ export default function AuditPage() {
 
       {/* ── Error ── */}
       {status === "error" && (
-        <div className="rounded-xl border border-[var(--error-border)] bg-[var(--error-bg)] px-4 sm:px-5 py-3 sm:py-4 text-sm text-ds-red">
+        <div
+          key={errorKey}
+          className="rounded-xl border border-[var(--error-border)] bg-[var(--error-bg)] px-4 sm:px-5 py-3 sm:py-4 text-sm text-ds-red"
+          style={{ animation: "error-shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both" }}
+        >
           {error}
         </div>
       )}
