@@ -736,7 +736,7 @@ export default function AuditPage() {
 
       {/* ── Hero ── */}
       <header className="relative mb-10 sm:mb-14">
-        <div className="flex items-center gap-2 mb-4 sm:mb-5">
+        <div className="flex items-center gap-2 mb-4 sm:mb-5 -ml-[14px]">
           <span
             className="w-1.5 h-1.5 rounded-full bg-ds-olive"
             style={{ animation: "pulse-dot 2.5s ease-in-out infinite" }}
