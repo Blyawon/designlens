@@ -143,27 +143,16 @@ async function sampleDomOnce(
     }
 
     /* ── Chrome launch args ──
-       We build our own arg list from scratch instead of blindly spreading
-       @sparticuz/chromium's defaults, because those defaults include
-       crash-prone flags (--single-process, --no-zygote) and memory-hungry
-       SwiftShader GPU emulation that we don't need for DOM sampling. */
-    const args = [
-      /* Sandbox — must be off in containers */
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      /* GPU — fully off. sparticuz enables SwiftShader which eats ~200MB.
-         We only read computed styles, we don't render pixels. */
-      "--disable-gpu",
-      "--disable-software-rasterizer",
-      "--disable-webgl",
-      "--disable-webgl2",
-      /* Memory */
+       On serverless: start with @sparticuz/chromium's default args
+       (they include --single-process and --no-zygote which are REQUIRED
+       on Lambda — the runtime restricts process forking). Then strip
+       SwiftShader GPU emulation (~200MB savings) and add our own
+       memory/performance flags on top.
+       Locally: use our own minimal args (multi-process is fine). */
+
+    /* Extra flags we add in both environments */
+    const extraArgs = [
       "--disable-dev-shm-usage",
-      "--disk-cache-size=0",
-      "--disable-accelerated-2d-canvas",
-      "--disable-canvas-aa",
-      "--js-flags=--max-old-space-size=512",
-      /* Disable unnecessary features */
       "--disable-background-networking",
       "--disable-background-timer-throttling",
       "--disable-backgrounding-occluded-windows",
@@ -172,33 +161,37 @@ async function sampleDomOnce(
       "--disable-default-apps",
       "--disable-sync",
       "--disable-translate",
-      "--disable-domain-reliability",
       "--disable-component-update",
       "--disable-ipc-flooding-protection",
-      "--disable-print-preview",
       "--disable-speech-api",
       "--metrics-recording-only",
-      "--no-first-run",
-      "--no-default-browser-check",
       "--mute-audio",
       "--hide-scrollbars",
-      "--no-pings",
-      /* Site isolation off — reduces process count + memory */
-      "--disable-features=IsolateOrigins,site-per-process,AudioServiceOutOfProcess",
-      "--disable-site-isolation-trials",
-      /* Headless shell mode — lighter than old headless */
-      "--headless=shell",
-      /* NOTE: --single-process and --no-zygote deliberately omitted.
-         @sparticuz/chromium includes them by default but they make
-         Chromium extremely crash-prone: one renderer failure = entire
-         browser process dies with no recovery. Multi-process is more
-         stable even if it uses slightly more memory. */
+      "--disable-webgl",
+      "--disable-webgl2",
+      "--disable-accelerated-2d-canvas",
+      "--disable-canvas-aa",
+      "--js-flags=--max-old-space-size=512",
     ];
+
+    /* SwiftShader flags to strip from sparticuz defaults — saves ~200MB.
+       We don't render pixels, only read computed styles. */
+    const swiftshaderFlags = new Set([
+      "--use-gl=angle",
+      "--use-angle=swiftshader",
+      "--enable-unsafe-swiftshader",
+      "--ignore-gpu-blocklist",
+      "--in-process-gpu",
+    ]);
 
     if (isServerless) {
       const sparticuzChromium = (await import("@sparticuz/chromium")).default;
+      /* Start with sparticuz defaults, remove SwiftShader, add ours */
+      const baseArgs = sparticuzChromium.args.filter(
+        (a: string) => !swiftshaderFlags.has(a)
+      );
       browser = await chromium.launch({
-        args,
+        args: [...baseArgs, "--disable-gpu", ...extraArgs],
         executablePath: await sparticuzChromium.executablePath(),
         headless: true,
       });
