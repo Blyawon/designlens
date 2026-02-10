@@ -15,7 +15,7 @@
 
 import { chromium, Browser } from "playwright-core";
 import { SampledElement, SampleResult, ProgressCallback, CSSToken } from "./types";
-import { rmSync, readdirSync, statSync } from "fs";
+import { rmSync, readdirSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -114,42 +114,49 @@ async function sampleDomOnce(
   let pageCrashed = false;
   const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
 
+  /* ── Safe-list: files in /tmp that belong to @sparticuz/chromium ──
+     executablePath() checks `existsSync("/tmp/chromium")` and skips
+     extraction on warm containers. If we delete ANY of these, the
+     next invocation silently has a broken Chrome (no fonts, missing
+     libs, etc.) and crashes. Everything ELSE in /tmp is ephemeral
+     per-invocation junk (Playwright profiles, disk cache, crash
+     dumps) and must be cleaned up. */
+  const SPARTICUZ_KEEP = new Set([
+    "chromium",                    // the binary
+    "fonts",                       // font files directory
+    "al2023",                      // Amazon Linux 2023 compat libs
+    "swiftshader",                 // SwiftShader dir (may exist from older deploys)
+    "libGLESv2.so",                // SwiftShader lib
+    "libEGL.so",                   // SwiftShader lib
+    "libvk_swiftshader.so",        // Vulkan SwiftShader
+    "vk_swiftshader_icd.json",     // Vulkan config
+  ]);
+
+  /** Delete everything in /tmp that isn't sparticuz's. */
+  function sweepTmp() {
+    if (!isServerless) return;
+    try {
+      const tmp = tmpdir();
+      for (const name of readdirSync(tmp)) {
+        if (SPARTICUZ_KEEP.has(name)) continue;
+        try { rmSync(join(tmp, name), { recursive: true, force: true }); }
+        catch { /* best effort */ }
+      }
+    } catch { /* /tmp read failed — not fatal */ }
+  }
+
   try {
     onProgress?.({ phase: "launching", message: "Launching browser…" });
 
-    /* ── /tmp hygiene (serverless warm containers) ──
-       Playwright leaves temp profile dirs (pw-*, playwright*) in /tmp.
-       On warm containers these accumulate. Clean stale ones (>30s old)
-       before launching a new browser.
-       IMPORTANT: Do NOT delete anything else — @sparticuz/chromium keeps
-       its binary, fonts, and shared libraries in /tmp and only re-extracts
-       them on cold starts (checks existsSync("/tmp/chromium")). */
-    if (isServerless) {
-      try {
-        const tmp = tmpdir();
-        const now = Date.now();
-        for (const name of readdirSync(tmp)) {
-          if (!name.startsWith("pw-") && !name.startsWith("playwright") && !name.startsWith("Crashpad")) continue;
-          const full = join(tmp, name);
-          try {
-            const age = now - statSync(full).mtimeMs;
-            if (age > 30_000) {
-              rmSync(full, { recursive: true, force: true });
-            }
-          } catch { /* best effort */ }
-        }
-      } catch { /* /tmp read failed — not fatal */ }
-    }
+    /* ── Pre-launch /tmp sweep ──
+       On warm containers, previous invocations may have left behind
+       Playwright user data dirs (5-35MB each), Crashpad dirs, xdg
+       dirs, etc. Previous code used prefix matching (pw-*, playwright*)
+       which missed some patterns. Now we just delete everything that
+       isn't sparticuz's — simple, complete, can't miss anything. */
+    sweepTmp();
 
-    /* ── Chrome launch args ──
-       On serverless: start with @sparticuz/chromium's default args
-       (they include --single-process and --no-zygote which are REQUIRED
-       on Lambda — the runtime restricts process forking). Then strip
-       SwiftShader GPU emulation (~200MB savings) and add our own
-       memory/performance flags on top.
-       Locally: use our own minimal args (multi-process is fine). */
-
-    /* Extra flags we add in both environments */
+    /* ── Chrome launch args ── */
     const extraArgs = [
       "--disable-dev-shm-usage",
       "--disable-background-networking",
@@ -171,10 +178,16 @@ async function sampleDomOnce(
       "--disable-accelerated-2d-canvas",
       "--disable-canvas-aa",
       "--js-flags=--max-old-space-size=512",
+      /* Zero disk cache — we load a single page and throw it away.
+         sparticuz defaults set 32MB; each timed-out invocation leaked
+         that to /tmp. Zero eliminates it. */
+      "--disk-cache-size=0",
+      /* Disable crash reporting — prevents Crashpad dirs in /tmp */
+      "--disable-breakpad",
+      "--disable-crash-reporter",
     ];
 
-    /* SwiftShader flags to strip from sparticuz defaults — saves ~200MB.
-       We don't render pixels, only read computed styles. */
+    /* SwiftShader flags to strip from sparticuz defaults */
     const swiftshaderFlags = new Set([
       "--use-gl=angle",
       "--use-angle=swiftshader",
@@ -185,13 +198,13 @@ async function sampleDomOnce(
 
     if (isServerless) {
       const sparticuzChromium = (await import("@sparticuz/chromium")).default;
-      /* Disable graphics mode BEFORE calling executablePath() — this
-         prevents extracting swiftshader.tar.br (~50MB saved in /tmp). */
       sparticuzChromium.setGraphicsMode = false;
-      /* Start with sparticuz defaults, remove SwiftShader, add ours */
+
+      /* Filter sparticuz defaults: remove SwiftShader + override disk cache */
       const baseArgs = sparticuzChromium.args.filter(
-        (a: string) => !swiftshaderFlags.has(a)
+        (a: string) => !swiftshaderFlags.has(a) && !a.startsWith("--disk-cache-size")
       );
+
       browser = await chromium.launch({
         args: [...baseArgs, "--disable-gpu", ...extraArgs],
         executablePath: await sparticuzChromium.executablePath(),
@@ -769,29 +782,26 @@ async function sampleDomOnce(
       cssTokens,
     };
   } finally {
-    if (browser) {
-      /* IMPORTANT: Let browser.close() run FIRST so Playwright and Chrome
-         do their own cleanup (shared memory, lock files, IPC sockets, temp
-         data). Only SIGKILL as a last resort if close hangs.
+    /* ── Cleanup strategy ──
+       1. Try browser.close() with a generous 10s timeout.
+          This lets Playwright clean up IPC, sockets, and its own temp dirs.
+       2. If close hangs → SIGKILL the Chrome process.
+       3. sweepTmp() deletes everything in /tmp except sparticuz's files.
+          This catches leaked user data dirs, crash dumps, xdg dirs, etc.
+          regardless of naming patterns or Playwright versions. */
 
-         Previous approach was SIGKILL first → browser.close() no-op, which
-         prevented ALL internal cleanup. Chrome's temp files (not just pw-*
-         or playwright*) accumulated in /tmp until it filled up (~512MB on
-         Lambda), causing the "works then stops after a while" pattern. */
+    if (browser) {
       let closedCleanly = false;
       try {
-        /* .catch() on close() prevents an unhandled rejection if the
-           timeout wins the race and we SIGKILL while close() is pending */
         const closePromise = browser.close().then(() => { closedCleanly = true; }).catch(() => {});
         await Promise.race([
           closePromise,
-          new Promise((resolve) => setTimeout(resolve, 5_000)),
+          new Promise((resolve) => setTimeout(resolve, 10_000)),
         ]);
       } catch {
         /* close() threw — Chrome probably already crashed */
       }
 
-      /* If close didn't finish in 5s, force-kill the process */
       if (!closedCleanly) {
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -804,37 +814,12 @@ async function sampleDomOnce(
               try { process.kill(proc.pid, "SIGKILL"); } catch { /* already dead */ }
             }
           }
-        } catch {
-          /* process already dead — that's fine */
-        }
+        } catch { /* already dead */ }
       }
     }
 
-    /* Clean up Playwright's temp dirs from this invocation.
-       IMPORTANT: Only target Playwright-specific prefixes. Do NOT delete
-       everything — @sparticuz/chromium extracts supporting files to /tmp
-       that are NOT re-extracted on warm containers:
-         /tmp/chromium     — the binary itself
-         /tmp/fonts/       — font files for text rendering
-         /tmp/al2023/      — AL2023 compatibility libs
-         /tmp/libGLESv2.so — SwiftShader libs (extracted to /tmp root)
-         /tmp/libEGL.so
-       executablePath() only checks if /tmp/chromium exists. If it does,
-       it returns immediately WITHOUT re-extracting fonts/libs. So deleting
-       those = Chrome crashes on the next warm invocation.
-
-       With browser.close() running first (above), Playwright cleans up
-       most of its own temp files. This sweep catches anything left over. */
-    if (isServerless) {
-      try {
-        const tmp = tmpdir();
-        for (const name of readdirSync(tmp)) {
-          if (!name.startsWith("pw-") && !name.startsWith("playwright") && !name.startsWith("Crashpad")) continue;
-          try {
-            rmSync(join(tmp, name), { recursive: true, force: true });
-          } catch { /* best effort */ }
-        }
-      } catch { /* /tmp read failed — not fatal */ }
-    }
+    /* Post-invocation sweep — clean up EVERYTHING this browser left
+       behind. Same safe-list approach as pre-launch. */
+    sweepTmp();
   }
 }
