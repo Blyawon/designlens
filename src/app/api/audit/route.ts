@@ -10,7 +10,6 @@
 import { NextRequest } from "next/server";
 import { runAudit } from "@/lib/audit/runAudit";
 import { validateUrl } from "@/lib/validateUrl";
-import { saveReport } from "@/lib/store";
 import { normalizeError } from "@/lib/audit/errorMessages";
 
 export const maxDuration = 120; // seconds — allows up to 3 retry attempts on crash
@@ -105,7 +104,6 @@ export async function POST(req: NextRequest) {
           abortController.signal
         );
 
-        await saveReport(result);
         send({ type: "complete", data: result });
       } catch (err: unknown) {
         /* Don't send error for intentional aborts */

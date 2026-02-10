@@ -669,6 +669,21 @@ export default function AuditPage() {
     [url, pressAnalyze, showError]
   );
 
+  /* Auto-run audit when opened with ?url= query param (shared links).
+     Runs once on mount, then clears the param from the URL bar. */
+  const didAutoRun = useRef(false);
+  useEffect(() => {
+    if (didAutoRun.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const sharedUrl = params.get("url");
+    if (sharedUrl) {
+      didAutoRun.current = true;
+      /* Clean the URL bar so refreshing doesn't re-trigger */
+      window.history.replaceState({}, "", window.location.pathname);
+      run(sharedUrl);
+    }
+  }, [run]);
+
   const scoreFor = (name: string): CategoryScore | undefined =>
     result?.scores.categories.find((c) => c.name === name);
 
@@ -678,9 +693,8 @@ export default function AuditPage() {
 
   const handleCopy = () => {
     if (!result) return;
-    navigator.clipboard.writeText(
-      `${window.location.origin}/report/${result.id}`
-    );
+    const shareUrl = `${window.location.origin}/?url=${encodeURIComponent(result.url)}`;
+    navigator.clipboard.writeText(shareUrl).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

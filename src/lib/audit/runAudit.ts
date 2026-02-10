@@ -12,7 +12,6 @@ import { analyzeColorRoles } from "./colorRoles";
 import { analyzePatterns } from "./patterns";
 import { extractTextStyles } from "./textStyles";
 import { analyzeTokens, HardcodedValueMap } from "./analyzeTokens";
-import { saveScreenshot } from "../store";
 
 function buildAnnotations(
   elements: import("./types").SampledElement[],
@@ -52,11 +51,6 @@ export async function runAudit(
   const { elements, screenshot, viewportWidth, pageHeight, fontFaces, cssTokens } =
     await sampleDom(url, onProgress, signal);
 
-  const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
-  if (!isServerless && screenshot.length > 0) {
-    onProgress?.({ phase: "screenshot", message: "Saving screenshot…" });
-    await saveScreenshot(id, screenshot);
-  }
 
   /* Wrap each analysis module in try-catch so one crash doesn't
      kill the whole audit. We degrade gracefully with empty defaults. */

@@ -16,16 +16,6 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: "/api/screenshot/:id*",
-        headers: [
-          {
-            key: "Cache-Control",
-            value: "public, max-age=86400, immutable",
-          },
-        ],
-      },
-      {
-        /* Static assets (fonts, icons) */
         source: "/:path*.(svg|ico|woff|woff2|ttf|eot)",
         headers: [
           {
