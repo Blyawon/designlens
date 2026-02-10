@@ -209,6 +209,14 @@ async function sampleDomOnce(
       "--disable-component-update",
       "--disable-ipc-flooding-protection",
       "--disable-speech-api",
+      "--disable-notifications",
+      "--disable-hang-monitor",
+      "--disable-popup-blocking",
+      "--disable-prompt-on-repost",
+      "--disable-domain-reliability",
+      "--disable-component-update",
+      "--disable-client-side-phishing-detection",
+      "--disable-software-rasterizer",
       "--metrics-recording-only",
       "--mute-audio",
       "--hide-scrollbars",
@@ -216,7 +224,9 @@ async function sampleDomOnce(
       "--disable-webgl2",
       "--disable-accelerated-2d-canvas",
       "--disable-canvas-aa",
-      "--js-flags=--max-old-space-size=512",
+      /* Page JS is disabled on serverless — Chrome's V8 only runs our
+         tiny page.evaluate() snippets. 128MB is plenty (was 512MB). */
+      "--js-flags=--max-old-space-size=128",
       "--disk-cache-size=0",
       "--disable-breakpad",
       "--disable-crash-reporter",
@@ -282,14 +292,12 @@ async function sampleDomOnce(
     checkAbort();
 
     /* ── Viewport + JS ──
-       On serverless: ALWAYS disable page JavaScript. This is the single
-       biggest memory saving (~500MB). Chrome's V8 doesn't allocate a
-       heap for the page's scripts. Our page.evaluate() calls still work
-       — CDP injection is separate from page-level JS execution.
-       Most sites SSR their CSS, so computed styles are still accurate.
-       Aggressive mode uses an even smaller viewport. */
-    const VIEWPORT_WIDTH = aggressiveMode ? 1024 : 1280;
-    const VIEWPORT_HEIGHT = aggressiveMode ? 600 : (isServerless ? 720 : 900);
+       On serverless: ALWAYS disable page JavaScript (~500MB saving).
+       Also use a smaller viewport (1024px vs 1280px) — fewer pixels
+       means less compositing memory. Responsive breakpoints still
+       trigger at 1024px so we get realistic desktop layouts. */
+    const VIEWPORT_WIDTH = aggressiveMode ? 800 : (isServerless ? 1024 : 1280);
+    const VIEWPORT_HEIGHT = aggressiveMode ? 600 : (isServerless ? 600 : 900);
 
     const page = await browser.newPage({
       viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
@@ -438,13 +446,16 @@ async function sampleDomOnce(
     /* Scroll page to trigger lazy-rendered content, capped at scroll depth.
        In aggressive mode, skip scrolling entirely — it loads more content
        which is the #1 cause of OOM on heavy sites. */
-    if (!aggressiveMode) {
+    if (!aggressiveMode && !isServerless) {
+      /* Scroll to trigger lazy-loaded content. Skipped on serverless
+         (JS is disabled so IntersectionObserver/scroll handlers won't
+         fire, and scrolling forces Chrome to render off-screen content
+         which wastes precious memory). */
       const scrollTarget = await page.evaluate(
         (maxDepth: number) => Math.min(document.body.scrollHeight, maxDepth),
         MAX_SCROLL_DEPTH
       );
       await page.evaluate((target: number) => window.scrollTo(0, target), scrollTarget);
-      /* Wait until new DOM content appears (lazy-load) or 1s max */
       await page
         .waitForFunction(
           (sel: string) => document.querySelectorAll(sel).length > 20,
@@ -453,7 +464,6 @@ async function sampleDomOnce(
         )
         .catch(() => {});
       await page.evaluate(() => window.scrollTo(0, 0));
-      /* Tiny settle (replaces old 500ms wait) */
       await page.waitForTimeout(200);
     }
 
