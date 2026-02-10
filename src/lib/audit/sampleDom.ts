@@ -780,8 +780,11 @@ async function sampleDomOnce(
          Lambda), causing the "works then stops after a while" pattern. */
       let closedCleanly = false;
       try {
+        /* .catch() on close() prevents an unhandled rejection if the
+           timeout wins the race and we SIGKILL while close() is pending */
+        const closePromise = browser.close().then(() => { closedCleanly = true; }).catch(() => {});
         await Promise.race([
-          browser.close().then(() => { closedCleanly = true; }),
+          closePromise,
           new Promise((resolve) => setTimeout(resolve, 5_000)),
         ]);
       } catch {
