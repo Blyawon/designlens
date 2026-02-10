@@ -38,9 +38,6 @@ const MAX_LAYOUT_AGGRESSIVE = 1000;
    Prevents us from loading an infinite-scroll page's entire feed. */
 const MAX_SCROLL_DEPTH = 4000;
 
-/* Max screenshot height in px. Caps memory usage on tall pages. */
-const MAX_SCREENSHOT_HEIGHT = 5000;
-
 function isCrashError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return (
@@ -685,8 +682,8 @@ async function sampleDomOnce(
       },
       {
         textSel: TEXT_SELECTORS,
-        maxText: aggressiveMode ? MAX_TEXT_AGGRESSIVE : MAX_TEXT_DEFAULT,
-        maxLayout: aggressiveMode ? MAX_LAYOUT_AGGRESSIVE : MAX_LAYOUT_DEFAULT,
+        maxText: aggressiveMode ? MAX_TEXT_AGGRESSIVE : (isServerless ? 1000 : MAX_TEXT_DEFAULT),
+        maxLayout: aggressiveMode ? MAX_LAYOUT_AGGRESSIVE : (isServerless ? 1200 : MAX_LAYOUT_DEFAULT),
       }
     );
 
@@ -720,9 +717,13 @@ async function sampleDomOnce(
       }
     }
 
-    // ---- extract @font-face rules for type specimen rendering ----
-    onProgress?.({ phase: "fonts", message: "Extracting font faces…" });
-    const fontFaces: string[] = await page.evaluate(() => {
+    // ---- extract fonts, tokens & page height in a single evaluate ----
+    // Combining these into one CDP call saves ~20ms overhead and avoids
+    // holding 3 separate serialised payloads in memory simultaneously.
+    onProgress?.({ phase: "fonts", message: "Extracting fonts & tokens…" });
+    const tokenLimit = aggressiveMode ? 200 : (isServerless ? 400 : 500);
+    const extras = await page.evaluate((maxTokens: number) => {
+      /* --- @font-face rules --- */
       const faces: string[] = [];
       try {
         for (const sheet of document.styleSheets) {
@@ -745,33 +746,19 @@ async function sampleDomOnce(
                 faces.push(css);
               }
             }
-          } catch {
-            /* CORS-blocked stylesheet — skip */
-          }
+          } catch { /* CORS-blocked */ }
         }
-      } catch {
-        /* no stylesheets */
-      }
-      return faces;
-    });
+      } catch { /* no stylesheets */ }
 
-    checkAbort();
-
-    // ---- extract CSS custom properties (design tokens) ----
-    onProgress?.({ phase: "fonts", message: "Extracting design tokens…" });
-    const tokenLimit = aggressiveMode ? 200 : 500;
-    const cssTokens: CSSToken[] = await page.evaluate((maxTokens: number) => {
+      /* --- CSS custom properties (design tokens) --- */
       const tokens: { name: string; value: string; rawValue?: string }[] = [];
       const seen = new Set<string>();
-      const MAX_TOKENS = maxTokens;
-
       try {
         for (const sheet of document.styleSheets) {
-          if (tokens.length >= MAX_TOKENS) break;
+          if (tokens.length >= maxTokens) break;
           try {
             for (const rule of sheet.cssRules) {
-              if (tokens.length >= MAX_TOKENS) break;
-              /* Only look at style rules (not @media, @keyframes, etc.) */
+              if (tokens.length >= maxTokens) break;
               if (!(rule instanceof CSSStyleRule)) continue;
               const style = rule.style;
               for (let i = 0; i < style.length; i++) {
@@ -779,76 +766,38 @@ async function sampleDomOnce(
                 if (!prop.startsWith("--")) continue;
                 if (seen.has(prop)) continue;
                 seen.add(prop);
-
                 const rawValue = style.getPropertyValue(prop).trim();
-                /* Resolve the computed value from :root */
                 const computed = getComputedStyle(document.documentElement)
-                  .getPropertyValue(prop)
-                  .trim();
-
+                  .getPropertyValue(prop).trim();
                 tokens.push({
                   name: prop,
                   value: computed || rawValue,
                   rawValue: rawValue !== computed ? rawValue : undefined,
                 });
-                if (tokens.length >= MAX_TOKENS) break;
+                if (tokens.length >= maxTokens) break;
               }
             }
-          } catch {
-            /* CORS-blocked stylesheet — skip */
-          }
+          } catch { /* CORS-blocked */ }
         }
-      } catch {
-        /* no stylesheets */
-      }
-
-      /* Sort alphabetically for consistent output */
+      } catch { /* no stylesheets */ }
       tokens.sort((a, b) => a.name.localeCompare(b.name));
-      return tokens;
+
+      return {
+        fontFaces: faces.slice(0, 60),
+        cssTokens: tokens,
+        pageHeight: document.body.scrollHeight,
+      };
     }, tokenLimit);
 
     checkAbort();
 
-    // ---- prepare for screenshot ----
-    onProgress?.({ phase: "screenshot", message: "Taking screenshot…" });
-    await page.evaluate(() => window.scrollTo(0, 0));
-    /* Tiny settle — 150ms is enough for scroll to complete */
-    await page.waitForTimeout(150);
-
-    const pageHeight = await page.evaluate(() => document.body.scrollHeight);
-
-    // ---- take screenshot (skip on serverless to save /tmp space) ----
-    let screenshot: Buffer;
-    if (isServerless) {
-      screenshot = Buffer.alloc(0);
-    } else {
-      /* Cap screenshot height to avoid OOM on very tall pages */
-      const clampedHeight = Math.min(pageHeight, MAX_SCREENSHOT_HEIGHT);
-      const needsClip = pageHeight > MAX_SCREENSHOT_HEIGHT;
-
-      if (needsClip) {
-        screenshot = await page.screenshot({
-          type: "jpeg",
-          quality: 70,
-          clip: { x: 0, y: 0, width: VIEWPORT_WIDTH, height: clampedHeight },
-        });
-      } else {
-        screenshot = await page.screenshot({
-          type: "jpeg",
-          quality: 70,
-          fullPage: true,
-        });
-      }
-    }
-
     return {
       elements: samples,
-      screenshot,
       viewportWidth: VIEWPORT_WIDTH,
       viewportHeight: VIEWPORT_HEIGHT,
-      pageHeight,
-      fontFaces: fontFaces.slice(0, 60),
-      cssTokens,
+      pageHeight: extras.pageHeight,
+      fontFaces: extras.fontFaces,
+      cssTokens: extras.cssTokens,
     };
   } finally {
     /* ── Cleanup strategy ──

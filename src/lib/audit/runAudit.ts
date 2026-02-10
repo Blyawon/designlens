@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { AuditResult, ProgressCallback, ScreenshotAnnotation } from "./types";
+import { AuditResult, ProgressCallback } from "./types";
 import { sampleDom } from "./sampleDom";
 import { analyzeColorSprawl } from "./sprawlColors";
 import { analyzeTypeSprawl } from "./sprawlType";
@@ -13,34 +13,6 @@ import { analyzePatterns } from "./patterns";
 import { extractTextStyles } from "./textStyles";
 import { analyzeTokens, HardcodedValueMap } from "./analyzeTokens";
 
-function buildAnnotations(
-  elements: import("./types").SampledElement[],
-  spacingSprawl: import("./types").SpacingSprawlResult
-): ScreenshotAnnotation[] {
-  const annotations: ScreenshotAnnotation[] = [];
-
-  const offGridValues = new Set(spacingSprawl.offGrid.map((v) => v.value));
-  for (const el of elements) {
-    if (!el.boundingBox || el.boundingBox.width < 5) continue;
-    const spacingVals = [
-      el.marginTop, el.marginRight, el.marginBottom, el.marginLeft,
-      el.paddingTop, el.paddingRight, el.paddingBottom, el.paddingLeft,
-      el.gap,
-    ];
-    const offGridHits = spacingVals.filter((v) => v && offGridValues.has(v));
-    if (offGridHits.length > 0) {
-      annotations.push({
-        selector: el.selector,
-        boundingBox: el.boundingBox,
-        issue: `Off-grid spacing: ${offGridHits.join(", ")}`,
-        color: "rgba(245,166,35,0.5)",
-      });
-    }
-  }
-
-  return annotations.slice(0, 80);
-}
-
 export async function runAudit(
   url: string,
   onProgress?: ProgressCallback,
@@ -48,7 +20,7 @@ export async function runAudit(
 ): Promise<AuditResult> {
   const id = crypto.randomBytes(8).toString("hex");
 
-  const { elements, screenshot, viewportWidth, pageHeight, fontFaces, cssTokens } =
+  const { elements, viewportWidth, pageHeight, fontFaces, cssTokens } =
     await sampleDom(url, onProgress, signal);
 
 
@@ -109,8 +81,6 @@ export async function runAudit(
   onProgress?.({ phase: "fixplan", message: "Generating findings…" });
   const fixPlan = generateFixPlan(colorSprawl, typeSprawl, spacingSprawl, miscSprawl);
 
-  const annotations = buildAnnotations(elements, spacingSprawl);
-
   return {
     id,
     url,
@@ -127,8 +97,6 @@ export async function runAudit(
     textStyles,
     patterns,
     designTokens,
-    annotations,
-    screenshotId: id,
     viewportWidth,
     pageHeight,
     fontFaces,

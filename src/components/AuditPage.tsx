@@ -435,7 +435,7 @@ function SectionGroup({
 
 const STEPS = [
   { id: "connect", label: "Connecting to page", phases: ["launching", "loading", "waiting"] },
-  { id: "sample", label: "Sampling DOM elements", phases: ["sampling", "sampled", "fonts", "screenshot"] },
+  { id: "sample", label: "Sampling DOM elements", phases: ["sampling", "sampled", "fonts"] },
   { id: "analyze", label: "Analyzing styles", phases: ["colors", "type", "spacing", "misc"] },
   { id: "detect", label: "Detecting patterns", phases: ["typeScale", "colorRoles", "textStyles", "patterns"] },
   { id: "score", label: "Computing scores", phases: ["scoring", "fixplan"] },

@@ -39,7 +39,6 @@ export interface SampledElement {
 
 export interface SampleResult {
   elements: SampledElement[];
-  screenshot: Buffer;
   viewportWidth: number;
   viewportHeight: number;
   pageHeight: number;
@@ -217,14 +216,6 @@ export interface PatternAnalysis {
   oneOffs: number;
 }
 
-// ---- Screenshot Annotations ----
-
-export interface ScreenshotAnnotation {
-  selector: string;
-  boundingBox: { top: number; left: number; width: number; height: number };
-  issue: string;
-  color: string;
-}
 
 // ---- Scoring ----
 
@@ -398,8 +389,6 @@ export interface AuditResult {
   textStyles: TextStyle[];
   patterns: PatternAnalysis;
   designTokens: DesignTokensResult;
-  annotations: ScreenshotAnnotation[];
-  screenshotId?: string;
   viewportWidth: number;
   pageHeight: number;
   fontFaces: string[];
