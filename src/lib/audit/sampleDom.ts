@@ -119,16 +119,18 @@ async function sampleDomOnce(
     const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
 
     /* ── /tmp hygiene (serverless warm containers) ──
-       Chromium leaves profile dirs, crashpad, and cache in /tmp.
-       On warm containers these accumulate across invocations and
-       eventually fill the 512MB /tmp quota, causing Chromium to
-       fail on launch. Clean up stale Chromium dirs before starting. */
+       Playwright leaves temp profile dirs in /tmp. On warm containers
+       these accumulate and can fill the 512MB /tmp quota.
+       IMPORTANT: Do NOT clean 'chromium*' — that's the @sparticuz/chromium
+       binary itself. Deleting it breaks all subsequent invocations. */
     if (isServerless) {
       try {
         const tmp = tmpdir();
         const now = Date.now();
         for (const name of readdirSync(tmp)) {
-          if (!name.startsWith("pw-") && !name.startsWith("chromium") && !name.startsWith("Crashpad")) continue;
+          /* Only clean Playwright temp dirs and Crashpad dumps.
+             Never touch the chromium binary or anything else. */
+          if (!name.startsWith("pw-") && !name.startsWith("playwright") && !name.startsWith("Crashpad")) continue;
           const full = join(tmp, name);
           try {
             const age = now - statSync(full).mtimeMs;
