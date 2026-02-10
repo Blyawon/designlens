@@ -118,22 +118,22 @@ async function sampleDomOnce(
     onProgress?.({ phase: "launching", message: "Launching browser…" });
 
     /* ── /tmp hygiene (serverless warm containers) ──
-       Playwright leaves temp profile dirs in /tmp. On warm containers
-       these accumulate and can fill the 512MB /tmp quota.
-       IMPORTANT: Do NOT clean 'chromium*' — that's the @sparticuz/chromium
-       binary itself. Deleting it breaks all subsequent invocations. */
+       On Lambda, /tmp is 512MB and persists across warm invocations.
+       Chrome + Playwright leave various temp files (profiles, shared memory,
+       crash dumps, lock files, scoped dirs) that accumulate over time.
+       We delete EVERYTHING from /tmp except the @sparticuz/chromium binary
+       (which starts with "chromium") — but only entries older than 30s
+       to avoid deleting files from a concurrent invocation. */
     if (isServerless) {
       try {
         const tmp = tmpdir();
         const now = Date.now();
         for (const name of readdirSync(tmp)) {
-          /* Only clean Playwright temp dirs and Crashpad dumps.
-             Never touch the chromium binary or anything else. */
-          if (!name.startsWith("pw-") && !name.startsWith("playwright") && !name.startsWith("Crashpad")) continue;
+          if (name.startsWith("chromium")) continue; // preserve the binary
           const full = join(tmp, name);
           try {
             const age = now - statSync(full).mtimeMs;
-            if (age > 30_000) { // older than 30s = not ours
+            if (age > 30_000) {
               rmSync(full, { recursive: true, force: true });
             }
           } catch { /* best effort */ }
@@ -767,39 +767,63 @@ async function sampleDomOnce(
     };
   } finally {
     if (browser) {
-      /* Kill the Chromium process, then close the browser handle.
-         On serverless with --single-process, Chrome runs as a single child
-         process (no subprocesses). We MUST NOT use kill(-pid) (process group)
-         because Chrome may share the same PGID as Node.js on Lambda, which
-         would kill the Lambda runtime itself.
-         Locally (multi-process Chrome), group kill is safe and catches all
-         child processes (renderer, GPU, utility). */
+      /* IMPORTANT: Let browser.close() run FIRST so Playwright and Chrome
+         do their own cleanup (shared memory, lock files, IPC sockets, temp
+         data). Only SIGKILL as a last resort if close hangs.
+
+         Previous approach was SIGKILL first → browser.close() no-op, which
+         prevented ALL internal cleanup. Chrome's temp files (not just pw-*
+         or playwright*) accumulated in /tmp until it filled up (~512MB on
+         Lambda), causing the "works then stops after a while" pattern. */
+      let closedCleanly = false;
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const proc = (browser as any).process?.();
-        if (proc?.pid) {
-          if (isServerless) {
-            /* Single-process mode: just kill the one Chromium process */
-            try { process.kill(proc.pid, "SIGKILL"); } catch { /* already dead */ }
-          } else {
-            /* Multi-process mode: kill the process group to catch all children */
-            try { process.kill(-proc.pid, "SIGKILL"); } catch { /* not a group leader */ }
-            try { process.kill(proc.pid, "SIGKILL"); } catch { /* already dead */ }
-          }
-        }
+        await Promise.race([
+          browser.close().then(() => { closedCleanly = true; }),
+          new Promise((resolve) => setTimeout(resolve, 5_000)),
+        ]);
       } catch {
-        /* process already dead — that's fine */
+        /* close() threw — Chrome probably already crashed */
       }
-      await browser.close().catch(() => {});
+
+      /* If close didn't finish in 5s, force-kill the process */
+      if (!closedCleanly) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const proc = (browser as any).process?.();
+          if (proc?.pid) {
+            if (isServerless) {
+              try { process.kill(proc.pid, "SIGKILL"); } catch { /* already dead */ }
+            } else {
+              try { process.kill(-proc.pid, "SIGKILL"); } catch { /* not a group leader */ }
+              try { process.kill(proc.pid, "SIGKILL"); } catch { /* already dead */ }
+            }
+          }
+        } catch {
+          /* process already dead — that's fine */
+        }
+      }
     }
-    /* Clean up Playwright's auto-created temp dirs for this launch.
-       Match the same prefixes as the pre-launch sweep (except chromium). */
-    try {
-      const tmp = tmpdir();
-      for (const name of readdirSync(tmp)) {
-        if (!name.startsWith("pw-") && !name.startsWith("playwright") && !name.startsWith("Crashpad")) continue;
-        rmSync(join(tmp, name), { recursive: true, force: true });
-      }
-    } catch { /* best effort */ }
+
+    /* Aggressive /tmp sweep: delete EVERYTHING except the @sparticuz/chromium
+       binary. On Lambda, /tmp starts empty — anything in there was created
+       by us or previous invocations. Previous approach only cleaned 3 known
+       prefixes (pw-*, playwright*, Crashpad*) and missed Chrome's own temp
+       files (shared memory segments, lock files, scoped_dir*, etc.) which
+       accumulated until /tmp filled up.
+
+       The chromium binary path looks like: /tmp/chromium or /tmp/chromium-*
+       We preserve anything starting with "chromium". Everything else goes. */
+    if (isServerless) {
+      try {
+        const tmp = tmpdir();
+        for (const name of readdirSync(tmp)) {
+          if (name.startsWith("chromium")) continue; // preserve the binary
+          const full = join(tmp, name);
+          try {
+            rmSync(full, { recursive: true, force: true });
+          } catch { /* best effort */ }
+        }
+      } catch { /* /tmp read failed — not fatal */ }
+    }
   }
 }
