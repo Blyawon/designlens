@@ -15,7 +15,7 @@
 
 import { chromium, Browser } from "playwright-core";
 import { SampledElement, SampleResult, ProgressCallback, CSSToken } from "./types";
-import { mkdtempSync, rmSync, readdirSync, statSync } from "fs";
+import { rmSync, readdirSync, statSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -113,9 +113,6 @@ async function sampleDomOnce(
   /* Declared here, assigned after page is created */
   let pageCrashed = false;
 
-  /* Temp directory for this browser instance — we control its lifecycle */
-  let userDataDir: string | null = null;
-
   try {
     onProgress?.({ phase: "launching", message: "Launching browser…" });
 
@@ -142,9 +139,6 @@ async function sampleDomOnce(
         }
       } catch { /* /tmp read failed — not fatal */ }
     }
-
-    /* Create a dedicated user-data-dir we can nuke on cleanup */
-    userDataDir = mkdtempSync(join(tmpdir(), "pw-"));
 
     /* ── Chrome launch args ──
        We build our own arg list from scratch instead of blindly spreading
@@ -192,8 +186,6 @@ async function sampleDomOnce(
       "--disable-site-isolation-trials",
       /* Headless shell mode — lighter than old headless */
       "--headless=shell",
-      /* Use our controlled temp dir — cleaned up in finally block */
-      `--user-data-dir=${userDataDir}`,
       /* NOTE: --single-process and --no-zygote deliberately omitted.
          @sparticuz/chromium includes them by default but they make
          Chromium extremely crash-prone: one renderer failure = entire
@@ -773,9 +765,13 @@ async function sampleDomOnce(
       }
       await browser.close().catch(() => {});
     }
-    /* Nuke the user-data-dir so /tmp doesn't fill up */
-    if (userDataDir) {
-      try { rmSync(userDataDir, { recursive: true, force: true }); } catch { /* best effort */ }
-    }
+    /* Clean up Playwright's auto-created temp dirs for this launch */
+    try {
+      const tmp = tmpdir();
+      for (const name of readdirSync(tmp)) {
+        if (!name.startsWith("playwright")) continue;
+        rmSync(join(tmp, name), { recursive: true, force: true });
+      }
+    } catch { /* best effort */ }
   }
 }
