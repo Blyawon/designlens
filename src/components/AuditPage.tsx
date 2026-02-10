@@ -12,6 +12,11 @@ import SprawlSection from "./SprawlSection";
 
 type Status = "idle" | "running" | "done" | "error";
 
+/* Client-side timeout for the entire audit request.
+   If the server hasn't finished in 55s, we abort gracefully
+   (server-side maxDuration is 60s, so 55s avoids a silent drop). */
+const CLIENT_TIMEOUT_MS = 55_000;
+
 /* ---- Typewriter ---- */
 
 const ROTATE_WORDS = [
@@ -294,10 +299,33 @@ export default function AuditPage() {
   const [copied, setCopied] = useState(false);
   const colors = useDominantColors(result);
 
+  /* AbortController ref — lets us cancel in-flight requests
+     when the user clicks Cancel or the timeout fires. */
+  const abortRef = useRef<AbortController | null>(null);
+
+  const cancel = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setStatus("idle");
+    setProgress("");
+  }, []);
+
+  /* Clean up on unmount (e.g. user navigates away) */
+  useEffect(() => {
+    return () => { abortRef.current?.abort(); };
+  }, []);
+
   const run = useCallback(
     async (overrideUrl?: string) => {
       const targetUrl = (overrideUrl || url).trim();
       if (!targetUrl) return;
+
+      /* Cancel any in-flight request first */
+      abortRef.current?.abort();
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       if (overrideUrl) setUrl(overrideUrl);
       setStatus("running");
       setProgress("Connecting…");
@@ -306,15 +334,24 @@ export default function AuditPage() {
       setResult(null);
       setCopied(false);
 
+      /* Auto-timeout: if the audit takes longer than CLIENT_TIMEOUT_MS,
+         abort the request so the user isn't left hanging. */
+      const timer = setTimeout(() => {
+        controller.abort();
+        setError("The audit timed out. The target site may be too complex or slow to respond. Try a simpler page.");
+        setStatus("error");
+      }, CLIENT_TIMEOUT_MS);
+
       try {
         const res = await fetch("/api/audit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url: targetUrl }),
+          signal: controller.signal,
         });
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
-          throw new Error(body.error || `HTTP ${res.status}`);
+          throw new Error(body.error || `The server returned an error (HTTP ${res.status}). Please try again.`);
         }
         const reader = res.body!.getReader();
         const decoder = new TextDecoder();
@@ -347,8 +384,14 @@ export default function AuditPage() {
         }
       } catch (e: unknown) {
         if (e instanceof DOMException && e.name === "AbortError") return;
-        setError(e instanceof Error ? e.message : "Something went wrong");
+        setError(
+          e instanceof Error
+            ? e.message
+            : "Something unexpected happened. Check your connection and try again."
+        );
         setStatus("error");
+      } finally {
+        clearTimeout(timer);
       }
     },
     [url]
@@ -430,11 +473,33 @@ export default function AuditPage() {
             className="w-full sm:flex-1 h-13 sm:h-14 px-4 sm:px-5 rounded-xl bg-white border border-border text-base font-mono text-ds-primary placeholder:text-ds-tertiary focus:outline-none focus:border-ds-olive focus:ring-2 focus:ring-ds-olive/20 disabled:opacity-50 transition-colors shadow-sm"
           />
           <button
-            onClick={() => run()}
-            disabled={status === "running" || !url.trim()}
-            className="h-13 sm:h-14 px-6 sm:px-8 rounded-xl bg-ds-olive text-white text-base font-semibold hover:bg-ds-olive/90 transition-all disabled:opacity-50 cursor-pointer whitespace-nowrap shadow-sm shrink-0"
+            onClick={status === "running" ? cancel : () => run()}
+            disabled={status !== "running" && !url.trim()}
+            className="relative h-13 sm:h-14 rounded-xl text-base font-semibold cursor-pointer whitespace-nowrap shadow-sm shrink-0 disabled:opacity-50 overflow-hidden transition-colors duration-300 ease-in-out"
+            style={{
+              /* Fixed width based on the wider label so the button never jumps. */
+              minWidth: "7.5rem",
+            }}
           >
-            {status === "running" ? "Analyzing…" : "Analyze"}
+            {/* Invisible sizer — always rendered so the button keeps
+                the width of the longer word ("Analyze"). */}
+            <span className="invisible px-6 sm:px-8" aria-hidden="true">Analyze</span>
+
+            {/* Cross-fade in place — pure opacity, no movement */}
+            <span
+              className={`absolute inset-0 flex items-center justify-center rounded-xl text-white transition-opacity duration-300 ease-in-out bg-ds-olive hover:bg-ds-olive/90 ${
+                status === "running" ? "opacity-0 pointer-events-none" : "opacity-100"
+              }`}
+            >
+              Analyze
+            </span>
+            <span
+              className={`absolute inset-0 flex items-center justify-center rounded-xl text-white transition-opacity duration-300 ease-in-out bg-ds-red/80 hover:bg-ds-red/90 ${
+                status === "running" ? "opacity-100" : "opacity-0 pointer-events-none"
+              }`}
+            >
+              Cancel
+            </span>
           </button>
         </div>
       </div>

@@ -23,6 +23,12 @@ import {
 const NEAR_DUP_THRESHOLD = 5;
 const CLUSTER_THRESHOLD = 10;
 
+/* Cap how many unique colors we feed into O(n^2) algorithms.
+   Beyond ~120 unique colours, the clustering and near-dup loops
+   start to dominate runtime (14,000+ deltaE calls).
+   120 covers the vast majority of real design systems. */
+const MAX_COLORS_FOR_ANALYSIS = 120;
+
 /* ---- hue angle from LAB ---- */
 
 function hueAngle(lab: LAB): number {
@@ -68,20 +74,28 @@ export function analyzeColorSprawl(
   }
 
   const allColors = Array.from(counts.entries())
-    .map(([hex, count]) => ({
-      hex,
-      count,
-      name: getColorName(hex),
-      lab: rgbaToLab(parseColor(hex)!),
-    }))
+    .map(([hex, count]) => {
+      const parsed = parseColor(hex);
+      if (!parsed) return null;
+      try {
+        return { hex, count, name: getColorName(hex), lab: rgbaToLab(parsed) };
+      } catch {
+        return null;
+      }
+    })
+    .filter((c): c is NonNullable<typeof c> => c !== null)
     .sort((a, b) => b.count - a.count);
+
+  /* Feed at most MAX_COLORS_FOR_ANALYSIS into the expensive O(n^2) loops.
+     We keep the full list for reporting but only cluster/dup-check the top ones. */
+  const analysisColors = allColors.slice(0, MAX_COLORS_FOR_ANALYSIS);
 
   /* ---- cluster ---- */
 
   const clusters: ColorCluster[] = [];
   const assigned = new Set<string>();
 
-  for (const c of allColors) {
+  for (const c of analysisColors) {
     if (assigned.has(c.hex)) continue;
     const cluster: ColorCluster = {
       representative: c.hex,
@@ -92,7 +106,7 @@ export function analyzeColorSprawl(
     };
     assigned.add(c.hex);
 
-    for (const o of allColors) {
+    for (const o of analysisColors) {
       if (assigned.has(o.hex)) continue;
       if (deltaE(c.lab, o.lab) < CLUSTER_THRESHOLD) {
         cluster.members.push(o.hex);
@@ -106,18 +120,18 @@ export function analyzeColorSprawl(
   /* ---- near-duplicates ---- */
 
   const nearDuplicates: NearDuplicate[] = [];
-  for (let i = 0; i < allColors.length; i++) {
-    for (let j = i + 1; j < allColors.length; j++) {
-      const d = deltaE(allColors[i].lab, allColors[j].lab);
+  for (let i = 0; i < analysisColors.length; i++) {
+    for (let j = i + 1; j < analysisColors.length; j++) {
+      const d = deltaE(analysisColors[i].lab, analysisColors[j].lab);
       if (d > 0 && d < NEAR_DUP_THRESHOLD) {
         const keep =
-          allColors[i].count >= allColors[j].count
-            ? allColors[i]
-            : allColors[j];
-        const drop = keep === allColors[i] ? allColors[j] : allColors[i];
+          analysisColors[i].count >= analysisColors[j].count
+            ? analysisColors[i]
+            : analysisColors[j];
+        const drop = keep === analysisColors[i] ? analysisColors[j] : analysisColors[i];
         nearDuplicates.push({
-          color1: allColors[i].hex,
-          color2: allColors[j].hex,
+          color1: analysisColors[i].hex,
+          color2: analysisColors[j].hex,
           distance: Math.round(d * 10) / 10,
           suggestion: `Replace ${drop.hex} with ${keep.hex}`,
         });

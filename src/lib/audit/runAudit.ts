@@ -43,12 +43,13 @@ function buildAnnotations(
 
 export async function runAudit(
   url: string,
-  onProgress?: ProgressCallback
+  onProgress?: ProgressCallback,
+  signal?: AbortSignal
 ): Promise<AuditResult> {
   const id = crypto.randomBytes(8).toString("hex");
 
   const { elements, screenshot, viewportWidth, pageHeight, fontFaces } =
-    await sampleDom(url, onProgress);
+    await sampleDom(url, onProgress, signal);
 
   const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
   if (!isServerless && screenshot.length > 0) {
@@ -56,29 +57,31 @@ export async function runAudit(
     await saveScreenshot(id, screenshot);
   }
 
-  onProgress?.({ phase: "colors", message: "Analysing colours…" });
-  const colorSprawl = analyzeColorSprawl(elements);
+  /* Wrap each analysis module in try-catch so one crash doesn't
+     kill the whole audit. We degrade gracefully with empty defaults. */
+  function safe<T>(label: string, phase: string, fn: () => T, fallback: T): T {
+    try {
+      onProgress?.({ phase, message: label });
+      return fn();
+    } catch (err) {
+      console.error(`[audit] ${phase} failed:`, err);
+      return fallback;
+    }
+  }
 
-  onProgress?.({ phase: "type", message: "Analysing typography…" });
-  const typeSprawl = analyzeTypeSprawl(elements);
+  const emptyColor: import("./types").ColorSprawlResult = { uniqueCount: 0, allColors: [], clusters: [], nearDuplicates: [], hueGroups: [], proposedPalette: { neutrals: [], primary: [], accent: [] } };
+  const emptyType: import("./types").TypeSprawlResult = { fontSizes: [], fontWeights: [], lineHeights: [], lineHeightRatios: [], fontFamilies: [], letterSpacings: [], sizeNearDuplicates: [], regionBreakdown: [] };
+  const emptySpacing: import("./types").SpacingSprawlResult = { allValues: [], layoutValues: [], detectedBase: 8, adherence: 100, onGrid: [], offGrid: [], nearDuplicates: [], regionBreakdown: [] };
+  const emptyMisc: import("./types").MiscSprawlResult = { borderRadii: [], boxShadows: [], borderWidths: [], zIndices: [], opacities: [], transitions: [], radiusNearDuplicates: [] };
 
-  onProgress?.({ phase: "spacing", message: "Analysing spacing…" });
-  const spacingSprawl = analyzeSpacingSprawl(elements);
-
-  onProgress?.({ phase: "misc", message: "Analysing shapes & layers…" });
-  const miscSprawl = analyzeMiscSprawl(elements);
-
-  onProgress?.({ phase: "typeScale", message: "Detecting type scale…" });
-  const typeScale = analyzeTypeScale(typeSprawl.fontSizes);
-
-  onProgress?.({ phase: "colorRoles", message: "Inferring color roles…" });
-  const colorRoles = analyzeColorRoles(elements);
-
-  onProgress?.({ phase: "textStyles", message: "Extracting text styles…" });
-  const textStyles = extractTextStyles(elements);
-
-  onProgress?.({ phase: "patterns", message: "Mining component patterns…" });
-  const patterns = analyzePatterns(elements);
+  const colorSprawl = safe("Analysing colours…", "colors", () => analyzeColorSprawl(elements), emptyColor);
+  const typeSprawl = safe("Analysing typography…", "type", () => analyzeTypeSprawl(elements), emptyType);
+  const spacingSprawl = safe("Analysing spacing…", "spacing", () => analyzeSpacingSprawl(elements), emptySpacing);
+  const miscSprawl = safe("Analysing shapes & layers…", "misc", () => analyzeMiscSprawl(elements), emptyMisc);
+  const typeScale = safe("Detecting type scale…", "typeScale", () => analyzeTypeScale(typeSprawl.fontSizes), { detectedRatio: null, scaleName: null, baseSize: null, steps: [], outliers: [] });
+  const colorRoles = safe("Inferring color roles…", "colorRoles", () => analyzeColorRoles(elements), { roles: [], inconsistencies: [] });
+  const textStyles = safe("Extracting text styles…", "textStyles", () => extractTextStyles(elements), []);
+  const patterns = safe("Mining component patterns…", "patterns", () => analyzePatterns(elements), { patterns: [], coveredElements: 0, totalElements: elements.length, coverage: 0, oneOffs: elements.length });
 
   onProgress?.({ phase: "scoring", message: "Computing scores…" });
   const scores = computeScores(

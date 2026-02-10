@@ -1,11 +1,17 @@
 /* ---------------------------------------------------------------
    POST /api/audit  — SSE-streamed design-system audit
+
+   Performance notes:
+   - Propagates AbortSignal to runAudit so Playwright is killed
+     the moment the client disconnects (no orphaned browsers).
+   - Rate limiter prevents abuse.
    --------------------------------------------------------------- */
 
 import { NextRequest } from "next/server";
 import { runAudit } from "@/lib/audit/runAudit";
 import { validateUrl } from "@/lib/validateUrl";
 import { saveReport } from "@/lib/store";
+import { normalizeError } from "@/lib/audit/errorMessages";
 
 export const maxDuration = 60; // seconds — audits take 10-25s
 
@@ -34,7 +40,7 @@ export async function POST(req: NextRequest) {
 
   if (!rateOk(ip)) {
     return Response.json(
-      { error: "Rate limit exceeded – try again in a minute." },
+      { error: "You've run too many audits in a short time. Wait a minute and try again." },
       { status: 429 }
     );
   }
@@ -43,16 +49,27 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json();
   } catch {
-    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+    return Response.json({ error: "We couldn't read your request. Please try again." }, { status: 400 });
   }
 
   if (!body.url) {
-    return Response.json({ error: "URL is required." }, { status: 400 });
+    return Response.json({ error: "Please enter a URL to analyse." }, { status: 400 });
   }
 
   const v = validateUrl(body.url);
   if (!v.valid) {
     return Response.json({ error: v.error }, { status: 400 });
+  }
+
+  /* ---- Create an AbortController that fires when the client disconnects.
+     This is critical: without it, a user who closes the tab still leaves
+     a Playwright browser running until timeout, wasting serverless $$. ---- */
+
+  const abortController = new AbortController();
+
+  /* Next.js provides req.signal which aborts when the client disconnects */
+  if (req.signal) {
+    req.signal.addEventListener("abort", () => abortController.abort());
   }
 
   /* ---- stream response via SSE ---- */
@@ -67,24 +84,36 @@ export async function POST(req: NextRequest) {
             encoder.encode(`data: ${JSON.stringify(d)}\n\n`)
           );
         } catch {
-          /* stream already closed */
+          /* stream already closed — trigger abort so audit stops */
+          abortController.abort();
         }
       };
 
       try {
-        const result = await runAudit(v.url!, (progress) => {
-          send({ type: "progress", ...progress });
-        });
+        const result = await runAudit(
+          v.url!,
+          (progress) => {
+            send({ type: "progress", ...progress });
+          },
+          abortController.signal
+        );
 
         await saveReport(result);
         send({ type: "complete", data: result });
       } catch (err: unknown) {
-        const msg =
-          err instanceof Error ? err.message : "Unexpected error during audit.";
-        send({ type: "error", message: msg });
+        /* Don't send error for intentional aborts */
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+        send({ type: "error", message: normalizeError(err) });
       } finally {
         controller.close();
       }
+    },
+    cancel() {
+      /* Called when the client disconnects from the SSE stream.
+         This is the other half of cleanup — abort everything. */
+      abortController.abort();
     },
   });
 

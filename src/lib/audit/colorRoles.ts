@@ -99,8 +99,18 @@ export function analyzeColorRoles(elements: SampledElement[]): ColorRoleAnalysis
   // Check interactive colors: if >2 visually distinct colors, flag it
   const interactive = roleCounts.get("interactive");
   if (interactive && interactive.size > 1) {
-    const hexes = Array.from(interactive.keys());
-    const labs = hexes.map((h) => ({ hex: h, lab: rgbaToLab(parseColor(h)!) }));
+    const hexes = Array.from(interactive.keys()).slice(0, 80); // cap input to O(n^2) loop
+    const labs = hexes
+      .map((h) => {
+        try {
+          const parsed = parseColor(h);
+          if (!parsed) return null;
+          return { hex: h, lab: rgbaToLab(parsed) };
+        } catch {
+          return null;
+        }
+      })
+      .filter((v): v is NonNullable<typeof v> => v !== null);
     // Count distinct clusters (ΔE > 15)
     const clusters: string[][] = [];
     const assigned = new Set<string>();
