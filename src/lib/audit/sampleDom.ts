@@ -118,18 +118,18 @@ async function sampleDomOnce(
     onProgress?.({ phase: "launching", message: "Launching browser…" });
 
     /* ── /tmp hygiene (serverless warm containers) ──
-       On Lambda, /tmp is 512MB and persists across warm invocations.
-       Chrome + Playwright leave various temp files (profiles, shared memory,
-       crash dumps, lock files, scoped dirs) that accumulate over time.
-       We delete EVERYTHING from /tmp except the @sparticuz/chromium binary
-       (which starts with "chromium") — but only entries older than 30s
-       to avoid deleting files from a concurrent invocation. */
+       Playwright leaves temp profile dirs (pw-*, playwright*) in /tmp.
+       On warm containers these accumulate. Clean stale ones (>30s old)
+       before launching a new browser.
+       IMPORTANT: Do NOT delete anything else — @sparticuz/chromium keeps
+       its binary, fonts, and shared libraries in /tmp and only re-extracts
+       them on cold starts (checks existsSync("/tmp/chromium")). */
     if (isServerless) {
       try {
         const tmp = tmpdir();
         const now = Date.now();
         for (const name of readdirSync(tmp)) {
-          if (name.startsWith("chromium")) continue; // preserve the binary
+          if (!name.startsWith("pw-") && !name.startsWith("playwright") && !name.startsWith("Crashpad")) continue;
           const full = join(tmp, name);
           try {
             const age = now - statSync(full).mtimeMs;
@@ -185,6 +185,9 @@ async function sampleDomOnce(
 
     if (isServerless) {
       const sparticuzChromium = (await import("@sparticuz/chromium")).default;
+      /* Disable graphics mode BEFORE calling executablePath() — this
+         prevents extracting swiftshader.tar.br (~50MB saved in /tmp). */
+      sparticuzChromium.setGraphicsMode = false;
       /* Start with sparticuz defaults, remove SwiftShader, add ours */
       const baseArgs = sparticuzChromium.args.filter(
         (a: string) => !swiftshaderFlags.has(a)
@@ -804,23 +807,28 @@ async function sampleDomOnce(
       }
     }
 
-    /* Aggressive /tmp sweep: delete EVERYTHING except the @sparticuz/chromium
-       binary. On Lambda, /tmp starts empty — anything in there was created
-       by us or previous invocations. Previous approach only cleaned 3 known
-       prefixes (pw-*, playwright*, Crashpad*) and missed Chrome's own temp
-       files (shared memory segments, lock files, scoped_dir*, etc.) which
-       accumulated until /tmp filled up.
+    /* Clean up Playwright's temp dirs from this invocation.
+       IMPORTANT: Only target Playwright-specific prefixes. Do NOT delete
+       everything — @sparticuz/chromium extracts supporting files to /tmp
+       that are NOT re-extracted on warm containers:
+         /tmp/chromium     — the binary itself
+         /tmp/fonts/       — font files for text rendering
+         /tmp/al2023/      — AL2023 compatibility libs
+         /tmp/libGLESv2.so — SwiftShader libs (extracted to /tmp root)
+         /tmp/libEGL.so
+       executablePath() only checks if /tmp/chromium exists. If it does,
+       it returns immediately WITHOUT re-extracting fonts/libs. So deleting
+       those = Chrome crashes on the next warm invocation.
 
-       The chromium binary path looks like: /tmp/chromium or /tmp/chromium-*
-       We preserve anything starting with "chromium". Everything else goes. */
+       With browser.close() running first (above), Playwright cleans up
+       most of its own temp files. This sweep catches anything left over. */
     if (isServerless) {
       try {
         const tmp = tmpdir();
         for (const name of readdirSync(tmp)) {
-          if (name.startsWith("chromium")) continue; // preserve the binary
-          const full = join(tmp, name);
+          if (!name.startsWith("pw-") && !name.startsWith("playwright") && !name.startsWith("Crashpad")) continue;
           try {
-            rmSync(full, { recursive: true, force: true });
+            rmSync(join(tmp, name), { recursive: true, force: true });
           } catch { /* best effort */ }
         }
       } catch { /* /tmp read failed — not fatal */ }
