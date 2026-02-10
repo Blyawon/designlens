@@ -63,7 +63,7 @@ export default function TypePaletteView({ styles, fontFaces }: Props) {
           return (
             <div
               key={i}
-              className={`flex items-baseline gap-4 py-2.5 px-3 rounded-lg transition-colors relative ${
+              className={`flex items-baseline gap-4 py-2.5 -mx-3 px-3 rounded-lg transition-colors relative ${
                 isHovered ? "bg-ds-olive-50" : ""
               }`}
               onMouseEnter={() => setHoveredIdx(i)}

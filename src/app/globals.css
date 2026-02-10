@@ -139,10 +139,12 @@
   --color-ds-amber: var(--amber);
   --color-ds-red: var(--red);
   --color-ds-blue: var(--blue);
+  --color-surface-subtle: var(--surface-subtle);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-serif: var(--font-instrument-serif);
   --animate-fade-up: fadeUp 0.4s ease-out both;
+  --animate-ace-pulse: acePulse 2s ease-in-out 1s infinite;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -211,6 +213,12 @@
   0%   { left: -30%; }
   50%  { left: 65%; }
   100% { left: -30%; }
+}
+
+/* Ace grade — subtle pulse/glow on the letter */
+@keyframes acePulse {
+  0%, 100% { filter: brightness(1) drop-shadow(0 0 0px transparent); }
+  50%      { filter: brightness(1.15) drop-shadow(0 0 8px currentColor); }
 }
 
 /* Error shake — horizontal wobble like macOS wrong-password */

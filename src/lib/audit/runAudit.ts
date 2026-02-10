@@ -11,6 +11,7 @@ import { analyzeTypeScale } from "./typeScale";
 import { analyzeColorRoles } from "./colorRoles";
 import { analyzePatterns } from "./patterns";
 import { extractTextStyles } from "./textStyles";
+import { analyzeTokens, HardcodedValueMap } from "./analyzeTokens";
 import { saveScreenshot } from "../store";
 
 function buildAnnotations(
@@ -48,7 +49,7 @@ export async function runAudit(
 ): Promise<AuditResult> {
   const id = crypto.randomBytes(8).toString("hex");
 
-  const { elements, screenshot, viewportWidth, pageHeight, fontFaces } =
+  const { elements, screenshot, viewportWidth, pageHeight, fontFaces, cssTokens } =
     await sampleDom(url, onProgress, signal);
 
   const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
@@ -82,6 +83,25 @@ export async function runAudit(
   const colorRoles = safe("Inferring color roles…", "colorRoles", () => analyzeColorRoles(elements), { roles: [], inconsistencies: [] });
   const textStyles = safe("Extracting text styles…", "textStyles", () => extractTextStyles(elements), []);
   const patterns = safe("Mining component patterns…", "patterns", () => analyzePatterns(elements), { patterns: [], coveredElements: 0, totalElements: elements.length, coverage: 0, oneOffs: elements.length });
+  /* Build a map of hardcoded values from sprawl data so token analysis
+     can detect "shadowed" values — tokens whose resolved value appears
+     as a raw hardcoded value in the styles. */
+  const hardcodedMap: HardcodedValueMap = { colors: new Map(), values: new Map() };
+  for (const c of colorSprawl.allColors) {
+    const hex = c.hex.toLowerCase();
+    hardcodedMap.colors.set(hex, (hardcodedMap.colors.get(hex) || 0) + c.count);
+  }
+  for (const v of [
+    ...typeSprawl.fontSizes, ...typeSprawl.fontWeights, ...typeSprawl.lineHeights,
+    ...spacingSprawl.allValues, ...miscSprawl.borderRadii, ...miscSprawl.boxShadows,
+    ...miscSprawl.zIndices, ...miscSprawl.opacities,
+  ]) {
+    const key = v.value.toLowerCase();
+    hardcodedMap.values.set(key, (hardcodedMap.values.get(key) || 0) + v.count);
+  }
+
+  const emptyInsights = { categoryStats: [], duplicates: [], aliasingRate: 0, nearDuplicates: [], namingIssues: [], shadowedValues: [], orphans: [], scales: [] };
+  const designTokens = safe("Categorising design tokens…", "tokens", () => analyzeTokens(cssTokens, hardcodedMap), { totalCount: 0, groups: [], insights: emptyInsights });
 
   onProgress?.({ phase: "scoring", message: "Computing scores…" });
   const scores = computeScores(
@@ -112,6 +132,7 @@ export async function runAudit(
     colorRoles,
     textStyles,
     patterns,
+    designTokens,
     annotations,
     screenshotId: id,
     viewportWidth,

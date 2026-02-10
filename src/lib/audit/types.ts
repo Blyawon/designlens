@@ -44,6 +44,7 @@ export interface SampleResult {
   viewportHeight: number;
   pageHeight: number;
   fontFaces: string[];
+  cssTokens: CSSToken[];
 }
 
 // ---- Colour primitives ----
@@ -271,6 +272,114 @@ export interface TextStyle {
   elements: string[];
 }
 
+// ---- Design Tokens (CSS Custom Properties) ----
+
+export interface CSSToken {
+  name: string;             // e.g. "--color-primary"
+  value: string;            // resolved computed value
+  rawValue?: string;        // original value (may reference other vars)
+}
+
+export type TokenCategory =
+  | "color"
+  | "typography"
+  | "spacing"
+  | "sizing"
+  | "border"
+  | "shadow"
+  | "opacity"
+  | "z-index"
+  | "transition"
+  | "other";
+
+export interface TokenGroup {
+  category: TokenCategory;
+  label: string;            // display label e.g. "Colors"
+  tokens: CSSToken[];
+}
+
+/* ---- Token analysis insights ---- */
+
+export type TokenInsightSeverity = "info" | "warning" | "error";
+
+export interface TokenNearDuplicate {
+  token1: string;           // e.g. "--space-md"
+  token2: string;           // e.g. "--space-base"
+  value1: string;
+  value2: string;
+  category: TokenCategory;
+  distance: string;         // human-readable, e.g. "1px" or "ΔE 2.3"
+}
+
+export interface TokenNamingIssue {
+  token: string;
+  expected: string;         // dominant prefix, e.g. "--color-*"
+  actual: string;           // what the token uses, e.g. "--clr-*"
+  category: TokenCategory;
+}
+
+export interface TokenShadowedValue {
+  token: string;            // e.g. "--color-primary"
+  resolvedValue: string;    // e.g. "#3b82f6"
+  hardcodedCount: number;   // how many times this value appears raw in sprawl
+  category: TokenCategory;
+}
+
+export interface TokenOrphan {
+  token: string;
+  rawValue: string;         // the broken reference
+  resolvedValue: string;    // what it resolved to (empty / inherit / etc.)
+  reason: string;           // human-readable explanation
+}
+
+export interface TokenScaleAnalysis {
+  category: TokenCategory;
+  label: string;
+  detectedBase?: number;    // e.g. 4 for a 4px grid
+  detectedRatio?: number;   // e.g. 1.25 for modular scale
+  adherence: number;        // 0–100 %
+  onScale: string[];        // token names
+  offScale: string[];       // token names
+}
+
+/* Always-visible token stats — these produce output for any non-empty token set */
+
+export interface TokenDuplicate {
+  value: string;              // the shared computed value
+  tokens: string[];           // 2+ token names that resolve to it
+  category: TokenCategory;
+}
+
+export interface TokenCategoryStats {
+  category: TokenCategory;
+  label: string;
+  count: number;
+  uniqueValues: number;       // how many distinct computed values
+  aliasedCount: number;       // tokens whose rawValue contains var()
+  min?: string;               // smallest value (for numeric categories)
+  max?: string;               // largest value (for numeric categories)
+}
+
+export interface TokenInsights {
+  /* Always-visible stats */
+  categoryStats: TokenCategoryStats[];
+  duplicates: TokenDuplicate[];
+  aliasingRate: number;       // 0–100, % of tokens that reference other tokens
+
+  /* Conditional warnings (may be empty) */
+  nearDuplicates: TokenNearDuplicate[];
+  namingIssues: TokenNamingIssue[];
+  shadowedValues: TokenShadowedValue[];
+  orphans: TokenOrphan[];
+  scales: TokenScaleAnalysis[];
+}
+
+export interface DesignTokensResult {
+  totalCount: number;
+  groups: TokenGroup[];
+  insights: TokenInsights;
+}
+
 // ---- Full audit result ----
 
 export interface AuditResult {
@@ -288,6 +397,7 @@ export interface AuditResult {
   colorRoles: ColorRoleAnalysis;
   textStyles: TextStyle[];
   patterns: PatternAnalysis;
+  designTokens: DesignTokensResult;
   annotations: ScreenshotAnnotation[];
   screenshotId?: string;
   viewportWidth: number;

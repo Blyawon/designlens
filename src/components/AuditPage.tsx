@@ -9,6 +9,8 @@ import TypeScaleView from "./TypeScaleView";
 import TypePaletteView from "./TypePaletteView";
 import ColorPalette from "./ColorPalette";
 import SprawlSection from "./SprawlSection";
+import DesignTokensView, { countTokenMatches } from "./DesignTokensView";
+import confetti from "canvas-confetti";
 
 type Status = "idle" | "running" | "done" | "error";
 
@@ -74,10 +76,26 @@ const EXAMPLES = ["stripe.com", "linear.app", "vercel.com"];
 
 /* ---- Browser chrome ---- */
 
-function BrowserChrome({ url, ghost }: { url: string; ghost?: boolean }) {
-  return (
+function BrowserChrome({
+  url,
+  ghost,
+  sticky,
+  onShare,
+  shared,
+  onUrlClick,
+}: {
+  url: string;
+  ghost?: boolean;
+  sticky?: boolean;
+  onShare?: () => void;
+  shared?: boolean;
+  onUrlClick?: () => void;
+}) {
+  const inner = (
     <div
       className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 border-b ${
+        sticky ? "" : "rounded-t-2xl "
+      }${
         ghost
           ? "border-border/30 bg-bg-card/30"
           : "border-border/40 bg-[var(--bg-elevated)]"
@@ -89,15 +107,59 @@ function BrowserChrome({ url, ghost }: { url: string; ghost?: boolean }) {
         <div className="w-2 h-2 rounded-full bg-[var(--surface-dots)]" />
       </div>
       <div className="flex-1 flex justify-center min-w-0">
-        <div
-          className={`px-3 py-0.5 rounded-md bg-[var(--surface-url)] text-[11px] font-mono truncate max-w-[220px] sm:max-w-sm ${
-            ghost ? "text-ds-tertiary/50" : "text-ds-tertiary"
-          }`}
-        >
-          {url}
-        </div>
+        {ghost || !onUrlClick ? (
+          <div
+            className={`px-3 py-0.5 rounded-md bg-[var(--surface-url)] text-[11px] font-mono truncate max-w-[220px] sm:max-w-sm ${
+              ghost ? "text-ds-tertiary/50" : "text-ds-tertiary"
+            }`}
+          >
+            {url}
+          </div>
+        ) : (
+          <button
+            onClick={onUrlClick}
+            className="px-3 py-0.5 rounded-md bg-[var(--surface-url)] text-[11px] font-mono truncate max-w-[220px] sm:max-w-sm text-ds-tertiary cursor-pointer transition-all duration-150 hover:bg-ds-olive/10 hover:text-ds-secondary active:scale-[0.97] active:bg-ds-olive/15 active:duration-75"
+          >
+            {url}
+          </button>
+        )}
       </div>
-      <div className="w-8 sm:w-10 shrink-0" />
+      {/* Share button (results) or spacer (ghost) */}
+      <div className="w-8 sm:w-10 shrink-0 flex justify-end">
+        {onShare && (
+          <button
+            onClick={onShare}
+            className="group/share relative flex items-center justify-center w-7 h-7 rounded-lg cursor-pointer transition-all duration-150 hover:bg-ds-olive/10 active:scale-95"
+            title="Copy report link"
+          >
+            {shared ? (
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-ds-olive transition-colors">
+                <path d="M2.5 7.5L5.5 10.5L11.5 3.5" />
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" className="text-ds-tertiary group-hover/share:text-ds-olive transition-colors">
+                <path d="M8.5 1.5h4v4" />
+                <path d="M12.5 1.5L7 7" />
+                <path d="M11 8v3.5a1 1 0 0 1-1 1H2.5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1H6" />
+              </svg>
+            )}
+            {/* Tooltip */}
+            <span
+              className={`absolute right-full mr-2 top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md bg-ds-olive px-2.5 py-1 text-[11px] font-medium text-white shadow-lg pointer-events-none transition-all duration-200 ${shared ? "opacity-100 translate-x-0" : "opacity-0 translate-x-1"}`}
+            >
+              Link copied — go share it!
+            </span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  if (!sticky) return inner;
+
+  return (
+    <div className="sticky top-0 z-50">
+      {inner}
     </div>
   );
 }
@@ -138,7 +200,7 @@ function GhostPreview() {
           {[{ w: 78, l: "16px" }, { w: 60, l: "24px" }, { w: 45, l: "14px" }, { w: 33, l: "32px" }, { w: 20, l: "12px" }].map((b) => (
             <div key={b.l} className="flex items-center gap-3">
               <span className="w-10 text-right text-[11px] font-mono text-ds-tertiary/30">{b.l}</span>
-              <div className="flex-1 h-4 bg-[var(--surface-subtle)] rounded-sm overflow-hidden">
+              <div className="flex-1 h-4 bg-surface-subtle rounded-sm overflow-hidden">
                 <div className="h-full bg-ds-olive-100/30 rounded-sm" style={{ width: `${b.w}%` }} />
               </div>
               <span className="w-6 text-right text-[10px] font-mono text-ds-tertiary/20">{Math.round(b.w * 0.6)}</span>
@@ -213,17 +275,106 @@ const confColor: Record<string, string> = {
   high: "text-ds-green",
 };
 
-function GroupHeader({ label, detail, first }: { label: string; detail?: string; first?: boolean }) {
+/* ---- Collapsible section group ----
+   Wraps a family of related sub-sections (e.g. all typography analysis)
+   under a single header that toggles the whole group open/closed.
+   When forceOpen is true (search active), the group is always expanded. */
+
+/* Sticky offset for L1 headers = browser chrome (45/49px) + search bar (55px) */
+const SEARCH_BAR_H = "top-[100px] sm:top-[104px]";
+
+function SectionGroup({
+  label,
+  detail,
+  first,
+  defaultOpen = true,
+  forceOpen,
+  filterQuery,
+  matchCount,
+  children,
+}: {
+  label: string;
+  detail?: string;
+  first?: boolean;
+  defaultOpen?: boolean;
+  forceOpen?: boolean;
+  filterQuery?: string;
+  matchCount?: number;
+  children: React.ReactNode;
+}) {
+  const [userOpen, setUserOpen] = useState(defaultOpen);
+  /* When search is active, sections auto-expand but the user can still
+     manually collapse them. We track that override separately and reset
+     it whenever the query text changes. */
+  const [searchCollapsed, setSearchCollapsed] = useState(false);
+  const prevQuery = useRef(filterQuery);
+  if (filterQuery !== prevQuery.current) {
+    prevQuery.current = filterQuery;
+    if (searchCollapsed) setSearchCollapsed(false);
+  }
+
+  const query = (filterQuery || "").toLowerCase().trim();
+  const labelMatch = query ? label.toLowerCase().includes(query) : false;
+
+  /* Determine open state */
+  const searchWantsOpen = forceOpen || labelMatch;
+  const open = searchWantsOpen ? !searchCollapsed : userOpen;
+
+  const toggle = () => {
+    if (searchWantsOpen) {
+      setSearchCollapsed(!searchCollapsed);
+    } else {
+      setUserOpen(!userOpen);
+    }
+  };
+
   return (
-    <div className={`${first ? "pt-5 sm:pt-6" : "pt-8 sm:pt-10"} pb-1 flex items-baseline gap-3`}>
-      <span className="text-xs font-semibold uppercase tracking-widest text-ds-olive">
-        {label}
-      </span>
-      {detail && (
-        <span className="text-[11px] text-ds-tertiary font-mono">
-          {detail}
-        </span>
-      )}
+    <div className={first ? "pt-5 sm:pt-6" : "pt-4 sm:pt-5"}>
+      <div
+        className={`sticky ${SEARCH_BAR_H} z-30 -mx-5 sm:-mx-8 px-4 sm:px-7 pt-2.5 pb-1`}
+      >
+        <button
+          onClick={toggle}
+          className={[
+            "w-full flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer",
+            "border border-border bg-bg-card backdrop-blur-sm shadow-sm",
+            "transition-all duration-150 ease-out",
+            "hover:border-ds-olive/30 hover:shadow-md hover:bg-surface-subtle",
+            "active:scale-[0.99] active:shadow-none active:border-ds-olive/40 active:bg-ds-olive/10 active:duration-75",
+          ].join(" ")}
+        >
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={`shrink-0 text-ds-olive transition-transform duration-200 ${
+              open ? "rotate-90" : ""
+            }`}
+          >
+            <path d="M4.5 2L8.5 6L4.5 10" />
+          </svg>
+          <span className="text-sm sm:text-base font-bold uppercase tracking-wider text-ds-olive">
+            {label}
+          </span>
+          {detail && !query && (
+            <span className="text-xs text-ds-tertiary font-mono ml-1">
+              {detail}
+            </span>
+          )}
+          {/* Result count badge — visible during search */}
+          {query && matchCount !== undefined && (
+            <span className="ml-auto text-[10px] font-mono font-medium text-ds-olive bg-ds-olive/10 border border-ds-olive/20 px-2 py-0.5 rounded-full leading-none">
+              {matchCount}
+            </span>
+          )}
+        </button>
+      </div>
+      {open && <div className="pt-2">{children}</div>}
     </div>
   );
 }
@@ -305,6 +456,10 @@ export default function AuditPage() {
 
   /* Bumps on every new error to re-trigger the shake animation. */
   const [errorKey, setErrorKey] = useState(0);
+  const [filterQuery, setFilterQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const urlInputRef = useRef<HTMLInputElement>(null);
   const showError = useCallback((msg: string) => {
     setError(msg);
     setErrorKey((k) => k + 1);
@@ -358,6 +513,26 @@ export default function AuditPage() {
   useEffect(() => {
     return () => { abortRef.current?.abort(); };
   }, []);
+
+  /* ⌘F / Ctrl+F to focus search, Esc to clear */
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "f") {
+        /* Only intercept when results are visible */
+        if (searchRef.current && result && status === "done") {
+          e.preventDefault();
+          searchRef.current.focus();
+        }
+      }
+      if (e.key === "Escape" && document.activeElement === searchRef.current) {
+        e.preventDefault();
+        setFilterQuery("");
+        searchRef.current?.blur();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [result, status]);
 
   const run = useCallback(
     async (overrideUrl?: string) => {
@@ -458,6 +633,28 @@ export default function AuditPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const fireConfetti = useCallback(() => {
+    const end = Date.now() + 1800;
+    const colors = ["#15803d", "#22c55e", "#86efac", "#5c6e3c"];
+    (function frame() {
+      confetti({
+        particleCount: 3,
+        angle: 60,
+        spread: 55,
+        origin: { x: 0, y: 0.6 },
+        colors,
+      });
+      confetti({
+        particleCount: 3,
+        angle: 120,
+        spread: 55,
+        origin: { x: 1, y: 0.6 },
+        colors,
+      });
+      if (Date.now() < end) requestAnimationFrame(frame);
+    })();
+  }, []);
+
   /* Consistent inner padding for the browser window */
   const inPad = "px-5 sm:px-8";
 
@@ -509,6 +706,7 @@ export default function AuditPage() {
       <div className="relative mb-3 sm:mb-4">
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
           <input
+            ref={urlInputRef}
             type="url"
             placeholder="https://example.com"
             value={url}
@@ -601,8 +799,14 @@ export default function AuditPage() {
 
       {/* ═══════════ RESULTS ═══════════ */}
       {result && status === "done" && (
-        <div className="rounded-2xl border border-border overflow-hidden shadow-sm bg-bg-card animate-fade-up">
-          <BrowserChrome url={result.url} />
+        <div
+          className="rounded-2xl border border-border shadow-sm bg-bg-card animate-fade-up"
+          style={{ clipPath: "inset(0 round 1rem)" }}
+        >
+          <BrowserChrome url={result.url} sticky onShare={handleCopy} shared={copied} onUrlClick={() => {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+            setTimeout(() => urlInputRef.current?.focus(), 400);
+          }} />
 
           {/* ── Score ── */}
           <div className={`${inPad} py-8 sm:py-10`}>
@@ -611,6 +815,7 @@ export default function AuditPage() {
                 score={result.scores.overall}
                 grade={result.scores.grade}
                 label="Design Consistency"
+                onAce={fireConfetti}
               />
               <div className="flex items-center gap-2 mt-4 text-xs flex-wrap justify-center">
                 <span className={`font-mono font-medium ${confColor[result.scores.confidence]}`}>
@@ -620,13 +825,7 @@ export default function AuditPage() {
                 <span className="text-ds-tertiary font-mono">
                   {result.elementCount} elements
                 </span>
-                <span className="text-ds-tertiary">·</span>
-                <button
-                  onClick={handleCopy}
-                  className="text-ds-olive font-medium hover:text-ds-olive/70 cursor-pointer transition-colors"
-                >
-                  {copied ? "Copied!" : "Copy link"}
-                </button>
+                
               </div>
             </div>
 
@@ -659,131 +858,307 @@ export default function AuditPage() {
           )}
 
           {/* ── Summary cards ── */}
-          <div className={`${inPad} py-5 sm:py-6 grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-border`}>
-            <div className="rounded-lg bg-[var(--surface-subtle)] px-3 py-2.5">
-              <p className="text-[11px] text-ds-tertiary uppercase tracking-wider mb-0.5">Colors</p>
-              <p className="text-sm font-mono text-ds-primary font-medium">
-                {result.colorSprawl.uniqueCount}
+          <div className={`${inPad} py-6 sm:py-8 grid grid-cols-2 gap-3 sm:gap-4 border-t border-border`}>
+
+            <div className="rounded-xl bg-surface-subtle px-4 py-4 min-h-[6rem] flex flex-col justify-between">
+              <p className="text-[10px] text-ds-tertiary uppercase tracking-widest font-semibold">Colors</p>
+              <div className="space-y-0.5 mt-auto">
+                <p className="text-sm font-mono text-ds-primary">
+                  <span className="font-semibold">{result.colorSprawl.uniqueCount}</span> unique
+                </p>
                 {result.colorSprawl.nearDuplicates.length > 0 && (
-                  <span className="text-ds-amber font-normal"> · {result.colorSprawl.nearDuplicates.length} dupes</span>
+                  <p className="text-sm font-mono text-ds-amber">
+                    <span className="font-semibold">{result.colorSprawl.nearDuplicates.length}</span> near-duplicate{result.colorSprawl.nearDuplicates.length !== 1 ? "s" : ""}
+                  </p>
                 )}
-              </p>
+              </div>
             </div>
-            <div className="rounded-lg bg-[var(--surface-subtle)] px-3 py-2.5">
-              <p className="text-[11px] text-ds-tertiary uppercase tracking-wider mb-0.5">Spacing</p>
-              <p className="text-sm font-mono text-ds-primary font-medium">
-                base-{result.spacingSprawl.detectedBase} · {result.spacingSprawl.adherence}%
-              </p>
+
+            <div className="rounded-xl bg-surface-subtle px-4 py-4 min-h-[6rem] flex flex-col justify-between">
+              <p className="text-[10px] text-ds-tertiary uppercase tracking-widest font-semibold">Spacing</p>
+              <div className="space-y-0.5 mt-auto">
+                <p className="text-sm font-mono text-ds-primary">
+                  base-<span className="font-semibold">{result.spacingSprawl.detectedBase}</span> grid
+                </p>
+                <p className="text-sm font-mono text-ds-primary">
+                  <span className="font-semibold">{result.spacingSprawl.adherence}%</span> adherence
+                </p>
+              </div>
             </div>
-            <div className="rounded-lg bg-[var(--surface-subtle)] px-3 py-2.5">
-              <p className="text-[11px] text-ds-tertiary uppercase tracking-wider mb-0.5">Typography</p>
-              <p className="text-sm font-mono text-ds-primary font-medium">
-                {result.typeSprawl.fontFamilies.length} families · {result.typeSprawl.fontSizes.length} sizes
-              </p>
+
+            <div className="rounded-xl bg-surface-subtle px-4 py-4 min-h-[6rem] flex flex-col justify-between">
+              <p className="text-[10px] text-ds-tertiary uppercase tracking-widest font-semibold">Typography</p>
+              <div className="space-y-0.5 mt-auto">
+                <p className="text-sm font-mono text-ds-primary">
+                  <span className="font-semibold">{result.typeSprawl.fontFamilies.length}</span> families
+                </p>
+                <p className="text-sm font-mono text-ds-primary">
+                  <span className="font-semibold">{result.typeSprawl.fontSizes.length}</span> sizes
+                </p>
+              </div>
             </div>
-            <div className="rounded-lg bg-[var(--surface-subtle)] px-3 py-2.5">
-              <p className="text-[11px] text-ds-tertiary uppercase tracking-wider mb-0.5">Shape</p>
-              <p className="text-sm font-mono text-ds-primary font-medium">
-                {result.miscSprawl.borderRadii.length} radii · {result.miscSprawl.boxShadows.length} shadows
-              </p>
+
+            <div className="rounded-xl bg-surface-subtle px-4 py-4 min-h-[6rem] flex flex-col justify-between">
+              <p className="text-[10px] text-ds-tertiary uppercase tracking-widest font-semibold">Shape</p>
+              <div className="space-y-0.5 mt-auto">
+                <p className="text-sm font-mono text-ds-primary">
+                  <span className="font-semibold">{result.miscSprawl.borderRadii.length}</span> radii
+                </p>
+                <p className="text-sm font-mono text-ds-primary">
+                  <span className="font-semibold">{result.miscSprawl.boxShadows.length}</span> shadows
+                </p>
+              </div>
             </div>
+
           </div>
 
           {/* ── Analysis ── */}
-          <div className={`${inPad} pb-5 sm:pb-6`}>
-            <GroupHeader
-              label="Typography"
-              detail={`${result.typeSprawl.fontFamilies.length} families · ${result.typeSprawl.fontSizes.length} sizes · ${result.typeSprawl.fontWeights.length} weights`}
-              first
-            />
+          <div className={`${inPad} pb-5 sm:pb-8`}>
 
-            <TypePaletteView
-              styles={result.textStyles}
-              fontFaces={result.fontFaces}
-            />
-            <TypeScaleView data={result.typeScale} />
+            {/* ── Sticky global search ── */}
+            <div className="sticky top-[45px] sm:top-[49px] z-40 -mx-5 sm:-mx-8 px-4 sm:px-7 pt-3 pb-2 bg-bg-card/95 backdrop-blur-sm border-b border-transparent"
+              style={{ borderColor: filterQuery ? 'var(--border)' : 'transparent' }}
+            >
+              <div className="relative">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 14 14"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-ds-tertiary pointer-events-none"
+                >
+                  <circle cx="6" cy="6" r="4" />
+                  <path d="M9 9l3 3" />
+                </svg>
+                <input
+                  ref={searchRef}
+                  type="text"
+                  value={filterQuery}
+                  onChange={(e) => setFilterQuery(e.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setSearchFocused(false)}
+                  placeholder="Filter values, colors, tokens…"
+                  className="w-full pl-8 pr-20 py-2 text-xs font-mono rounded-lg border border-border bg-bg-card text-ds-primary placeholder:text-ds-tertiary focus:outline-none focus:border-ds-olive transition-colors duration-150"
+                />
 
-            <SprawlSection title="Font Sizes" score={scoreFor("Font Sizes")} values={result.typeSprawl.fontSizes} sortable>
-              {result.typeSprawl.sizeNearDuplicates.length > 0 && (
-                <div className="mt-3">
-                  <p className="text-xs text-ds-amber font-medium mb-1.5">Near-duplicate sizes</p>
-                  {result.typeSprawl.sizeNearDuplicates.map((nd, i) => (
-                    <p key={i} className="text-xs font-mono text-ds-secondary">
-                      {nd.value1} ≈ {nd.value2} <span className="text-ds-tertiary">(Δ{nd.difference}px)</span>
-                    </p>
-                  ))}
-                </div>
-              )}
-            </SprawlSection>
-
-            <SprawlSection title="Font Weights" score={scoreFor("Font Weights")} values={result.typeSprawl.fontWeights} />
-            <SprawlSection title="Font Families" score={scoreFor("Font Families")} values={result.typeSprawl.fontFamilies} />
-
-            <SprawlSection title="Line Heights" score={scoreFor("Line Heights")} values={result.typeSprawl.lineHeights} sortable>
-              {result.typeSprawl.lineHeightRatios.length > 0 && (
-                <div className="mt-3">
-                  <p className="text-xs text-ds-tertiary mb-2">Detected ratios (line-height ÷ font-size)</p>
-                  <div className="flex gap-2 flex-wrap">
-                    {result.typeSprawl.lineHeightRatios.map((r) => (
-                      <span key={r.value} className="text-xs font-mono px-2.5 py-1 rounded-md bg-ds-olive-50 text-ds-secondary border border-ds-olive-100/60">
-                        {r.value}× <span className="text-ds-tertiary">({r.count})</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </SprawlSection>
-
-            <GroupHeader
-              label="Colors"
-              detail={`${result.colorSprawl.uniqueCount} unique · ${result.colorSprawl.hueGroups.length} hue groups`}
-            />
-            <ColorRolesView data={result.colorRoles} />
-            <ColorPalette data={result.colorSprawl} score={scoreFor("Colors")} defaultOpen />
-
-            <GroupHeader
-              label="Spacing & Layout"
-              detail={`base-${result.spacingSprawl.detectedBase} grid · ${result.spacingSprawl.adherence}% adherence`}
-            />
-
-            <SprawlSection title="Spacing" score={scoreFor("Spacing")} values={result.spacingSprawl.allValues} flagged={offGridSet} sortable defaultOpen>
-              <div className="mt-3 text-xs text-ds-tertiary">
-                Detected: base-{result.spacingSprawl.detectedBase} grid · {result.spacingSprawl.adherence}% adherence
-                {result.spacingSprawl.layoutValues.length > 0 && (
-                  <> · {result.spacingSprawl.layoutValues.length} layout values excluded (&gt;96px)</>
-                )}
+                {/* Right side: clear button or ⌘F hint */}
+                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                  {filterQuery ? (
+                    <button
+                      onClick={() => { setFilterQuery(""); searchRef.current?.focus(); }}
+                      className="text-ds-tertiary hover:text-ds-secondary transition-colors cursor-pointer"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                        <path d="M3 3l6 6M9 3l-6 6" />
+                      </svg>
+                    </button>
+                  ) : !searchFocused ? (
+                    /* Keyboard hint — hidden when focused or when there's text */
+                    <kbd className="hidden sm:inline-flex items-center gap-0.5 text-[10px] font-mono text-ds-tertiary bg-surface-subtle border border-border rounded px-1.5 py-0.5 leading-none select-none">
+                      ⌘F
+                    </kbd>
+                  ) : (
+                    <kbd className="hidden sm:inline-flex items-center gap-0.5 text-[10px] font-mono text-ds-tertiary bg-surface-subtle border border-border rounded px-1.5 py-0.5 leading-none select-none">
+                      esc
+                    </kbd>
+                  )}
+                </span>
               </div>
-              {result.spacingSprawl.offGrid.length > 0 && (
-                <div className="mt-3">
-                  <p className="text-xs text-ds-amber font-medium mb-1.5">Off-grid values ({result.spacingSprawl.offGrid.length})</p>
-                  <div className="space-y-0.5">
-                    {result.spacingSprawl.offGrid.sort((a, b) => b.count - a.count).map((v) => (
-                      <p key={v.value} className="text-xs font-mono text-ds-secondary">
-                        {v.value} <span className="text-ds-tertiary">×{v.count}</span>
-                      </p>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </SprawlSection>
+            </div>
 
-            <SprawlSection title="Border Radii" score={scoreFor("Border Radii")} values={result.miscSprawl.borderRadii} sortable />
-            <SprawlSection title="Box Shadows" score={scoreFor("Box Shadows")} values={result.miscSprawl.boxShadows} />
-            <SprawlSection title="z-index" score={scoreFor("z-index")} values={result.miscSprawl.zIndices} sortable />
+            {/* When a section label matches the query, children get
+               an empty filterQuery so they show everything unfiltered.
+               This lets you type "typography" to see the full typography section. */}
+            {(() => {
+              const q = filterQuery.toLowerCase().trim();
+              const typoMatch = q && "typography".includes(q);
+              const colorMatch = q && "colors".includes(q);
+              const spacingMatch = q && "spacing & layout spacing layout".includes(q);
+              const tokenMatch = q && "design tokens".includes(q);
+              /* Child query: pass "" when the parent section label matches */
+              const typoQ = typoMatch ? "" : filterQuery;
+              const colorQ = colorMatch ? "" : filterQuery;
+              const spacingQ = spacingMatch ? "" : filterQuery;
+              const tokenQ = tokenMatch ? "" : filterQuery;
 
-            {result.miscSprawl.opacities.length > 0 && (
-              <SprawlSection title="Opacity" values={result.miscSprawl.opacities} />
-            )}
-            {result.miscSprawl.transitions.length > 0 && (
-              <SprawlSection title="Transitions" values={result.miscSprawl.transitions} />
-            )}
+              /* Compute match counts per section for the badge.
+                 Mirrors the same filtering logic SprawlSection/ColorPalette use. */
+              const countMatches = (vals: { value: string }[], childQ: string, title?: string) => {
+                if (!q) return 0;
+                if (!childQ) return vals.length; // section label matched → all shown
+                const cq = childQ.toLowerCase().trim();
+                const titleHit = title && title.toLowerCase().includes(cq);
+                return titleHit ? vals.length : vals.filter(v => v.value.toLowerCase().includes(cq)).length;
+              };
+
+              const typoCount = q ? (
+                countMatches(result.typeSprawl.fontSizes, typoQ, "Font Sizes") +
+                countMatches(result.typeSprawl.fontWeights, typoQ, "Font Weights") +
+                countMatches(result.typeSprawl.fontFamilies, typoQ, "Font Families") +
+                countMatches(result.typeSprawl.lineHeights, typoQ, "Line Heights")
+              ) : undefined;
+
+              const colorCount = q ? (
+                colorQ ? result.colorSprawl.hueGroups.reduce((sum, g) =>
+                  sum + g.colors.filter(c =>
+                    c.hex.toLowerCase().includes(colorQ.toLowerCase()) ||
+                    c.name.toLowerCase().includes(colorQ.toLowerCase()) ||
+                    g.name.toLowerCase().includes(colorQ.toLowerCase())
+                  ).length, 0
+                ) : result.colorSprawl.allColors.length
+              ) : undefined;
+
+              const spacingCount = q ? (
+                countMatches(result.spacingSprawl.allValues, spacingQ, "Spacing") +
+                countMatches(result.miscSprawl.borderRadii, spacingQ, "Border Radii") +
+                countMatches(result.miscSprawl.boxShadows, spacingQ, "Box Shadows") +
+                countMatches(result.miscSprawl.zIndices, spacingQ, "z-index") +
+                countMatches(result.miscSprawl.opacities, spacingQ, "Opacity") +
+                countMatches(result.miscSprawl.transitions, spacingQ, "Transitions")
+              ) : undefined;
+
+              return (
+                <>
+                  {/* ── Typography ── */}
+                  <SectionGroup
+                    label="Typography"
+                    detail={`${result.typeSprawl.fontFamilies.length} families · ${result.typeSprawl.fontSizes.length} sizes · ${result.typeSprawl.fontWeights.length} weights`}
+                    first
+                    forceOpen={!!filterQuery}
+                    filterQuery={filterQuery}
+                    matchCount={typoCount}
+                  >
+                    {!typoQ && (
+                      <>
+                        <TypePaletteView
+                          styles={result.textStyles}
+                          fontFaces={result.fontFaces}
+                        />
+                        <TypeScaleView data={result.typeScale} />
+                      </>
+                    )}
+
+                    <SprawlSection title="Font Sizes" score={scoreFor("Font Sizes")} values={result.typeSprawl.fontSizes} sortable filterQuery={typoQ}>
+                      {result.typeSprawl.sizeNearDuplicates.length > 0 && !typoQ && (
+                        <div className="mt-3">
+                          <p className="text-xs text-ds-amber font-medium mb-1.5">Near-duplicate sizes</p>
+                          {result.typeSprawl.sizeNearDuplicates.map((nd, i) => (
+                            <p key={i} className="text-xs font-mono text-ds-secondary">
+                              {nd.value1} ≈ {nd.value2} <span className="text-ds-tertiary">(Δ{nd.difference}px)</span>
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </SprawlSection>
+
+                    <SprawlSection title="Font Weights" score={scoreFor("Font Weights")} values={result.typeSprawl.fontWeights} filterQuery={typoQ} />
+                    <SprawlSection title="Font Families" score={scoreFor("Font Families")} values={result.typeSprawl.fontFamilies} filterQuery={typoQ} />
+
+                    <SprawlSection title="Line Heights" score={scoreFor("Line Heights")} values={result.typeSprawl.lineHeights} sortable filterQuery={typoQ}>
+                      {result.typeSprawl.lineHeightRatios.length > 0 && !typoQ && (
+                        <div className="mt-3">
+                          <p className="text-xs text-ds-tertiary mb-2">Detected ratios (line-height ÷ font-size)</p>
+                          <div className="flex gap-2 flex-wrap">
+                            {result.typeSprawl.lineHeightRatios.map((r) => (
+                              <span key={r.value} className="text-xs font-mono px-2.5 py-1 rounded-md bg-ds-olive-50 text-ds-secondary border border-ds-olive-100/60">
+                                {r.value}× <span className="text-ds-tertiary">({r.count})</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </SprawlSection>
+                  </SectionGroup>
+
+                  {/* ── Colors ── */}
+                  <SectionGroup
+                    label="Colors"
+                    detail={`${result.colorSprawl.uniqueCount} unique · ${result.colorSprawl.hueGroups.length} hue groups`}
+                    forceOpen={!!filterQuery}
+                    filterQuery={filterQuery}
+                    matchCount={colorCount}
+                  >
+                    {!colorQ && <ColorRolesView data={result.colorRoles} />}
+                    <ColorPalette data={result.colorSprawl} score={scoreFor("Colors")} filterQuery={colorQ} />
+                  </SectionGroup>
+
+                  {/* ── Spacing & Layout ── */}
+                  <SectionGroup
+                    label="Spacing & Layout"
+                    detail={`base-${result.spacingSprawl.detectedBase} grid · ${result.spacingSprawl.adherence}% adherence`}
+                    forceOpen={!!filterQuery}
+                    filterQuery={filterQuery}
+                    matchCount={spacingCount}
+                  >
+                    <SprawlSection title="Spacing" score={scoreFor("Spacing")} values={result.spacingSprawl.allValues} flagged={offGridSet} sortable filterQuery={spacingQ}>
+                      {!spacingQ && (
+                        <div className="mt-3 text-xs text-ds-tertiary">
+                          Detected: base-{result.spacingSprawl.detectedBase} grid · {result.spacingSprawl.adherence}% adherence
+                          {result.spacingSprawl.layoutValues.length > 0 && (
+                            <> · {result.spacingSprawl.layoutValues.length} layout values excluded (&gt;96px)</>
+                          )}
+                        </div>
+                      )}
+                      {result.spacingSprawl.offGrid.length > 0 && !spacingQ && (
+                        <div className="mt-3">
+                          <p className="text-xs text-ds-amber font-medium mb-1.5">Off-grid values ({result.spacingSprawl.offGrid.length})</p>
+                          <div className="space-y-0.5">
+                            {result.spacingSprawl.offGrid.sort((a, b) => b.count - a.count).map((v) => (
+                              <p key={v.value} className="text-xs font-mono text-ds-secondary">
+                                {v.value} <span className="text-ds-tertiary">×{v.count}</span>
+                              </p>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </SprawlSection>
+
+                    <SprawlSection title="Border Radii" score={scoreFor("Border Radii")} values={result.miscSprawl.borderRadii} sortable filterQuery={spacingQ} />
+                    <SprawlSection title="Box Shadows" score={scoreFor("Box Shadows")} values={result.miscSprawl.boxShadows} filterQuery={spacingQ} />
+                    <SprawlSection title="z-index" score={scoreFor("z-index")} values={result.miscSprawl.zIndices} sortable filterQuery={spacingQ} />
+
+                    {result.miscSprawl.opacities.length > 0 && (
+                      <SprawlSection title="Opacity" values={result.miscSprawl.opacities} filterQuery={spacingQ} />
+                    )}
+                    {result.miscSprawl.transitions.length > 0 && (
+                      <SprawlSection title="Transitions" values={result.miscSprawl.transitions} filterQuery={spacingQ} />
+                    )}
+                  </SectionGroup>
+
+                  {/* ── Design Tokens (always rendered — has empty state) ── */}
+                  <SectionGroup
+                    label="Design Tokens"
+                    detail={
+                      result.designTokens.totalCount === 0
+                        ? "none found"
+                        : `${result.designTokens.totalCount} in ${result.designTokens.groups.length} ${result.designTokens.groups.length === 1 ? "category" : "categories"}`
+                    }
+                    forceOpen={!!filterQuery}
+                    filterQuery={filterQuery}
+                    matchCount={q ? countTokenMatches(result.designTokens, tokenQ || filterQuery) : undefined}
+                  >
+                    <DesignTokensView
+                      data={result.designTokens}
+                      filterQuery={tokenQ}
+                    />
+                  </SectionGroup>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
 
-      <footer className="mt-16 sm:mt-20 pt-6 border-t border-border">
+      <footer className="mt-12 sm:mt-16 pt-5 sm:pt-6 border-t border-border space-y-2">
         <p className="text-xs text-ds-tertiary leading-relaxed">
           Your design system has opinions. This tool just makes them visible.
+        </p>
+        <p className="text-[10px] text-ds-tertiary/50 leading-relaxed font-mono">
+          Fun fact: the average website ships 37 unique font sizes. The ones that feel&nbsp;good? Usually&nbsp;six.
         </p>
       </footer>
     </div>

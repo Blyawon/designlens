@@ -102,9 +102,11 @@ function SignalRow({ signal }: { signal: ScoreSignal }) {
         : "bg-ds-red";
   return (
     <div className="flex items-center gap-2 sm:gap-3 text-xs">
-      <span className="w-20 sm:w-28 text-ds-tertiary truncate shrink-0">
+      <span className="text-ds-tertiary truncate shrink-0">
         {signal.name}
       </span>
+      <span className="flex-1" />
+      <span className="text-ds-secondary truncate text-right shrink-0">{signal.label}</span>
       <div className="w-20 sm:w-28 h-2 bg-[var(--surface-overlay)] rounded-full overflow-hidden shrink-0">
         <div
           className={`h-full rounded-full ${color}`}
@@ -115,12 +117,11 @@ function SignalRow({ signal }: { signal: ScoreSignal }) {
           }}
         />
       </div>
-      <span className="text-ds-secondary truncate">{signal.label}</span>
     </div>
   );
 }
 
-/* ---- Main section ---- */
+/* ---- Main section (always visible — no nested accordion) ---- */
 
 interface Props {
   title: string;
@@ -128,7 +129,8 @@ interface Props {
   values: TypeValue[];
   flagged?: Set<string>;
   sortable?: boolean;
-  defaultOpen?: boolean;
+  defaultOpen?: boolean; // kept for API compat, ignored
+  filterQuery?: string;
   children?: React.ReactNode;
 }
 
@@ -146,20 +148,31 @@ export default function SprawlSection({
   values,
   flagged,
   sortable,
-  defaultOpen,
+  filterQuery,
   children,
 }: Props) {
-  const [open, setOpen] = useState(defaultOpen ?? false);
   const [sortBy, setSortBy] = useState<"frequency" | "value">("frequency");
+
+  /* Apply global search filter.
+     If the query matches the section TITLE (e.g. "font sizes", "radii"),
+     show all values — the user is navigating by section name, not value. */
+  const query = (filterQuery || "").toLowerCase().trim();
+  const titleMatch = query && title.toLowerCase().includes(query);
+  const filtered = query && !titleMatch
+    ? values.filter((v) => v.value.toLowerCase().includes(query))
+    : values;
+
+  /* Hide section entirely when search is active but nothing matches */
+  if (query && !titleMatch && filtered.length === 0) return null;
 
   const sortedValues =
     sortBy === "value"
-      ? [...values].sort((a, b) => {
+      ? [...filtered].sort((a, b) => {
           const pxA = parseFloat(a.value) || 0;
           const pxB = parseFloat(b.value) || 0;
           return pxA - pxB;
         })
-      : values;
+      : filtered;
 
   const maxCount =
     sortedValues.length > 0
@@ -167,13 +180,11 @@ export default function SprawlSection({
       : 1;
 
   return (
-    <div className="border-t border-border overflow-hidden">
-      <button
-        className="w-full flex items-center justify-between py-4 sm:py-5 text-left cursor-pointer group"
-        onClick={() => setOpen(!open)}
-      >
+    <div className="border-t border-border">
+      {/* Static header — L2 (subordinate to SectionGroup L1) */}
+      <div className="flex items-center justify-between py-3 sm:py-4">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <h3 className="text-sm sm:text-base font-semibold text-ds-primary truncate">
+          <h3 className="text-xs sm:text-sm font-semibold text-ds-secondary truncate">
             {title}
           </h3>
           {score && (
@@ -184,74 +195,65 @@ export default function SprawlSection({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <span className="text-xs text-ds-tertiary font-mono">
-            {values.length}
-          </span>
-          <span className="text-sm text-ds-tertiary group-hover:text-ds-secondary transition-colors">
-            {open ? "−" : "+"}
-          </span>
-        </div>
-      </button>
+        <span className="text-xs text-ds-tertiary font-mono shrink-0">
+          {query ? `${filtered.length} of ${values.length}` : values.length}
+        </span>
+      </div>
 
-      {open && (
-        <div
-          className="pb-5 sm:pb-6 space-y-3 sm:space-y-4"
-          style={{ animation: "slideDown 0.25s ease-out" }}
-        >
-          {score?.signals && score.signals.length > 0 && (
-            <div className="space-y-2 sm:space-y-2.5 pb-3 sm:pb-4">
-              {score.signals.map((s) => (
-                <SignalRow key={s.name} signal={s} />
-              ))}
-            </div>
-          )}
-
-          {sortable && (
-            <div className="flex gap-1 text-xs">
-              <button
-                onClick={() => setSortBy("frequency")}
-                className={`px-2.5 py-1 rounded-md cursor-pointer transition-colors ${
-                  sortBy === "frequency"
-                    ? "bg-ds-olive-100 text-ds-primary font-medium"
-                    : "text-ds-tertiary hover:text-ds-secondary"
-                }`}
-              >
-                By frequency
-              </button>
-              <button
-                onClick={() => setSortBy("value")}
-                className={`px-2.5 py-1 rounded-md cursor-pointer transition-colors ${
-                  sortBy === "value"
-                    ? "bg-ds-olive-100 text-ds-primary font-medium"
-                    : "text-ds-tertiary hover:text-ds-secondary"
-                }`}
-              >
-                By value
-              </button>
-            </div>
-          )}
-
-          <div className="space-y-0.5">
-            {sortedValues.slice(0, 30).map((v, i) => (
-              <Bar
-                key={v.value}
-                item={v}
-                maxCount={maxCount}
-                warning={flagged?.has(v.value)}
-                index={i}
-              />
+      {/* Content — always visible */}
+      <div className="pb-5 sm:pb-6 space-y-3 sm:space-y-4">
+        {score?.signals && score.signals.length > 0 && !query && (
+          <div className="space-y-2 sm:space-y-2.5 pb-3 sm:pb-4">
+            {score.signals.map((s) => (
+              <SignalRow key={s.name} signal={s} />
             ))}
-            {sortedValues.length > 30 && (
-              <p className="text-xs text-ds-tertiary pt-1">
-                +{sortedValues.length - 30} more
-              </p>
-            )}
           </div>
+        )}
 
-          {children}
+        {sortable && (
+          <div className="flex gap-1 text-xs">
+            <button
+              onClick={() => setSortBy("frequency")}
+              className={`px-2.5 py-1 rounded-md cursor-pointer transition-colors ${
+                sortBy === "frequency"
+                  ? "bg-ds-olive-100 text-ds-primary font-medium"
+                  : "text-ds-tertiary hover:text-ds-secondary"
+              }`}
+            >
+              By frequency
+            </button>
+            <button
+              onClick={() => setSortBy("value")}
+              className={`px-2.5 py-1 rounded-md cursor-pointer transition-colors ${
+                sortBy === "value"
+                  ? "bg-ds-olive-100 text-ds-primary font-medium"
+                  : "text-ds-tertiary hover:text-ds-secondary"
+              }`}
+            >
+              By value
+            </button>
+          </div>
+        )}
+
+        <div className="space-y-0.5">
+          {sortedValues.slice(0, 30).map((v, i) => (
+            <Bar
+              key={v.value}
+              item={v}
+              maxCount={maxCount}
+              warning={flagged?.has(v.value)}
+              index={i}
+            />
+          ))}
+          {sortedValues.length > 30 && (
+            <p className="text-xs text-ds-tertiary pt-1">
+              +{sortedValues.length - 30} more
+            </p>
+          )}
         </div>
-      )}
+
+        {children}
+      </div>
     </div>
   );
 }

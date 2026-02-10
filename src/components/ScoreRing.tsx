@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 interface Props {
   score: number;
   grade: string;
   size?: "lg" | "sm";
   label?: string;
+  onAce?: () => void;          // fires once when grade A finishes animating
 }
 
 const RADIUS = 50;
@@ -17,8 +18,12 @@ export default function ScoreRing({
   grade,
   size = "lg",
   label,
+  onAce,
 }: Props) {
   const [filled, setFilled] = useState(false);
+  const isAce = grade === "A" || grade === "A+";
+
+  const onAceStable = useCallback(() => onAce?.(), [onAce]);
 
   useEffect(() => {
     const t = requestAnimationFrame(() => {
@@ -26,6 +31,13 @@ export default function ScoreRing({
     });
     return () => cancelAnimationFrame(t);
   }, []);
+
+  /* Fire the ace callback after the ring fill animation completes (~1s) */
+  useEffect(() => {
+    if (!isAce || !filled) return;
+    const t = setTimeout(() => onAceStable(), 1000);
+    return () => clearTimeout(t);
+  }, [isAce, filled, onAceStable]);
 
   const strokeColor =
     score >= 90
@@ -62,7 +74,30 @@ export default function ScoreRing({
   return (
     <div className="flex flex-col items-center gap-3">
       <div className="relative w-36 h-36">
-        <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
+        {/* Glow layer for A grades */}
+        {isAce && (
+          <div
+            className="absolute inset-[-12px] rounded-full pointer-events-none"
+            style={{
+              background: `radial-gradient(circle, ${strokeColor}22 0%, transparent 70%)`,
+              opacity: filled ? 1 : 0,
+              transition: "opacity 0.8s ease 1s",
+            }}
+          />
+        )}
+        <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90 relative">
+          {/* Shine filter for A grades */}
+          {isAce && (
+            <defs>
+              <filter id="ace-glow">
+                <feGaussianBlur stdDeviation="2.5" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+          )}
           <circle
             cx="60"
             cy="60"
@@ -81,12 +116,13 @@ export default function ScoreRing({
             strokeDasharray={CIRCUMFERENCE}
             strokeDashoffset={currentOffset}
             strokeLinecap="round"
+            filter={isAce && filled ? "url(#ace-glow)" : undefined}
             style={{ transition: "stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1)" }}
           />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
           <span
-            className="text-5xl font-serif"
+            className={`text-5xl font-serif ${isAce && filled ? "animate-ace-pulse" : ""}`}
             style={{
               color: strokeColor,
               opacity: filled ? 1 : 0,

@@ -14,7 +14,7 @@
    --------------------------------------------------------------- */
 
 import { chromium, Browser } from "playwright-core";
-import { SampledElement, SampleResult, ProgressCallback } from "./types";
+import { SampledElement, SampleResult, ProgressCallback, CSSToken } from "./types";
 
 const TEXT_SELECTORS = [
   "p","span","a","li","button","input","label","th","td",
@@ -503,6 +503,57 @@ export async function sampleDom(
 
     checkAbort();
 
+    // ---- extract CSS custom properties (design tokens) ----
+    onProgress?.({ phase: "fonts", message: "Extracting design tokens…" });
+    const cssTokens: CSSToken[] = await page.evaluate(() => {
+      const tokens: { name: string; value: string; rawValue?: string }[] = [];
+      const seen = new Set<string>();
+      const MAX_TOKENS = 500;
+
+      try {
+        for (const sheet of document.styleSheets) {
+          if (tokens.length >= MAX_TOKENS) break;
+          try {
+            for (const rule of sheet.cssRules) {
+              if (tokens.length >= MAX_TOKENS) break;
+              /* Only look at style rules (not @media, @keyframes, etc.) */
+              if (!(rule instanceof CSSStyleRule)) continue;
+              const style = rule.style;
+              for (let i = 0; i < style.length; i++) {
+                const prop = style[i];
+                if (!prop.startsWith("--")) continue;
+                if (seen.has(prop)) continue;
+                seen.add(prop);
+
+                const rawValue = style.getPropertyValue(prop).trim();
+                /* Resolve the computed value from :root */
+                const computed = getComputedStyle(document.documentElement)
+                  .getPropertyValue(prop)
+                  .trim();
+
+                tokens.push({
+                  name: prop,
+                  value: computed || rawValue,
+                  rawValue: rawValue !== computed ? rawValue : undefined,
+                });
+                if (tokens.length >= MAX_TOKENS) break;
+              }
+            }
+          } catch {
+            /* CORS-blocked stylesheet — skip */
+          }
+        }
+      } catch {
+        /* no stylesheets */
+      }
+
+      /* Sort alphabetically for consistent output */
+      tokens.sort((a, b) => a.name.localeCompare(b.name));
+      return tokens;
+    });
+
+    checkAbort();
+
     // ---- prepare for screenshot ----
     onProgress?.({ phase: "screenshot", message: "Taking screenshot…" });
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -542,6 +593,7 @@ export async function sampleDom(
       viewportHeight: VIEWPORT_HEIGHT,
       pageHeight,
       fontFaces: fontFaces.slice(0, 60),
+      cssTokens,
     };
   } finally {
     if (browser) await browser.close();
