@@ -145,6 +145,10 @@
   --font-serif: var(--font-instrument-serif);
   --animate-fade-up: fadeUp 0.4s ease-out both;
   --animate-ace-pulse: acePulse 2s ease-in-out 1s infinite;
+  --animate-modal-backdrop: modalBackdrop 0.25s ease-out both;
+  --animate-modal-expand: modalExpand 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-modal-backdrop-out: modalBackdropOut 0.2s ease-in both;
+  --animate-modal-collapse: modalCollapse 0.2s ease-in both;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -226,6 +230,30 @@
   0%, 100% { transform: translateX(0); }
   10%, 50%, 90% { transform: translateX(-4px); }
   30%, 70% { transform: translateX(4px); }
+}
+
+/* Fullscreen modal — backdrop fades in */
+@keyframes modalBackdrop {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Fullscreen modal — card scales up from slightly smaller */
+@keyframes modalExpand {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* Fullscreen modal — backdrop fades out */
+@keyframes modalBackdropOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+/* Fullscreen modal — card scales down on exit */
+@keyframes modalCollapse {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(0.92); }
 }
 
 /* ═══════════════════════════════════════════════════════════════

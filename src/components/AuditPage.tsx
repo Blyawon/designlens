@@ -160,6 +160,8 @@ function BrowserChrome({
   shared,
   onUrlClick,
   onClose,
+  onExpand,
+  expanded,
 }: {
   url: string;
   ghost?: boolean;
@@ -168,6 +170,8 @@ function BrowserChrome({
   shared?: boolean;
   onUrlClick?: () => void;
   onClose?: () => void;
+  onExpand?: () => void;
+  expanded?: boolean;
 }) {
   const inner = (
     <div
@@ -190,7 +194,17 @@ function BrowserChrome({
           <div className="w-2 h-2 rounded-full bg-[var(--surface-dots)]" />
         )}
         <div className="w-2 h-2 rounded-full bg-[var(--surface-dots)]" />
-        <div className="w-2 h-2 rounded-full bg-[var(--surface-dots)]" />
+        {onExpand ? (
+          <button
+            onClick={onExpand}
+            aria-label={expanded ? "Exit fullscreen" : "Expand fullscreen"}
+            className="group relative flex items-center justify-center w-5 h-5 -m-1.5 rounded-full cursor-pointer transition-colors duration-150 hover:bg-ds-green/15 active:bg-ds-green/25"
+          >
+            <span className="block w-2 h-2 rounded-full bg-[var(--surface-dots)] transition-colors duration-150 group-hover:bg-ds-green" />
+          </button>
+        ) : (
+          <div className="w-2 h-2 rounded-full bg-[var(--surface-dots)]" />
+        )}
       </div>
       <div className="flex-1 flex justify-center min-w-0">
         {ghost || !onUrlClick ? (
@@ -522,6 +536,8 @@ export default function AuditPage() {
   const [errorKey, setErrorKey] = useState(0);
   const [filterQuery, setFilterQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [modalClosing, setModalClosing] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
   const showError = useCallback((msg: string) => {
@@ -583,16 +599,38 @@ export default function AuditPage() {
     setError("");
     setCopied(false);
     setFilterQuery("");
+    setExpanded(false);
+    setModalClosing(false);
+    setUrl("");
     window.scrollTo({ top: 0, behavior: "smooth" });
     setTimeout(() => urlInputRef.current?.focus(), 400);
   }, []);
+
+  /* Collapse the fullscreen modal with an exit animation */
+  const collapseModal = useCallback(() => {
+    if (!expanded || modalClosing) return;
+    setModalClosing(true);
+    /* Wait for exit animation to finish before unmounting */
+    setTimeout(() => {
+      setExpanded(false);
+      setModalClosing(false);
+    }, 200);
+  }, [expanded, modalClosing]);
 
   /* Clean up on unmount (e.g. user navigates away) */
   useEffect(() => {
     return () => { abortRef.current?.abort(); };
   }, []);
 
-  /* ⌘F / Ctrl+F to focus search, Esc to clear */
+  /* Lock body scroll while modal is open */
+  useEffect(() => {
+    if (!expanded) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [expanded]);
+
+  /* ⌘F / Ctrl+F to focus search, Esc to clear or close modal */
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "f") {
@@ -602,15 +640,20 @@ export default function AuditPage() {
           searchRef.current.focus();
         }
       }
-      if (e.key === "Escape" && document.activeElement === searchRef.current) {
-        e.preventDefault();
-        setFilterQuery("");
-        searchRef.current?.blur();
+      if (e.key === "Escape") {
+        if (document.activeElement === searchRef.current) {
+          e.preventDefault();
+          setFilterQuery("");
+          searchRef.current?.blur();
+        } else if (expanded) {
+          e.preventDefault();
+          collapseModal();
+        }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [result, status]);
+  }, [result, status, expanded, collapseModal]);
 
   const run = useCallback(
     async (overrideUrl?: string) => {
@@ -890,15 +933,29 @@ export default function AuditPage() {
       )}
 
       {/* ═══════════ RESULTS ═══════════ */}
-      {result && status === "done" && (
-        <div
-          className="rounded-2xl border border-border shadow-sm bg-bg-card animate-fade-up"
-          style={{ clipPath: "inset(0 round 1rem)" }}
-        >
-          <BrowserChrome url={result.url} sticky onShare={handleCopy} shared={copied} onClose={clearAnalysis} onUrlClick={() => {
-            window.scrollTo({ top: 0, behavior: "smooth" });
-            setTimeout(() => urlInputRef.current?.focus(), 400);
-          }} />
+      {result && status === "done" && (() => {
+        const chrome = (
+          <BrowserChrome
+            url={result.url}
+            sticky
+            onShare={handleCopy}
+            shared={copied}
+            onClose={expanded ? collapseModal : clearAnalysis}
+            onExpand={() => expanded ? collapseModal() : setExpanded(true)}
+            expanded={expanded}
+            onUrlClick={expanded ? () => {
+              collapseModal();
+              window.scrollTo({ top: 0, behavior: "smooth" });
+              setTimeout(() => urlInputRef.current?.focus(), 400);
+            } : () => {
+              window.scrollTo({ top: 0, behavior: "smooth" });
+              setTimeout(() => urlInputRef.current?.focus(), 400);
+            }}
+          />
+        );
+
+        const cardBody = (
+          <>
 
           {/* ── Score ── */}
           <div className={`${inPad} py-8 sm:py-10`}>
@@ -1242,8 +1299,44 @@ export default function AuditPage() {
               );
             })()}
           </div>
-        </div>
-      )}
+          </>
+        );
+
+        if (expanded) {
+          return createPortal(
+            <div className="fixed inset-0 z-[9999]">
+              <div
+                className={`absolute inset-0 bg-black/30 backdrop-blur-md ${
+                  modalClosing ? "animate-modal-backdrop-out" : "animate-modal-backdrop"
+                }`}
+                onClick={collapseModal}
+              />
+              <div
+                className={`absolute inset-3 sm:inset-5 lg:inset-8 rounded-2xl border border-border bg-bg-card shadow-2xl flex flex-col overflow-hidden ${
+                  modalClosing ? "animate-modal-collapse" : "animate-modal-expand"
+                }`}
+                style={{ clipPath: "inset(0 round 1rem)" }}
+              >
+                {chrome}
+                <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                  {cardBody}
+                </div>
+              </div>
+            </div>,
+            document.body
+          );
+        }
+
+        return (
+          <div
+            className="rounded-2xl border border-border shadow-sm bg-bg-card animate-fade-up"
+            style={{ clipPath: "inset(0 round 1rem)" }}
+          >
+            {chrome}
+            {cardBody}
+          </div>
+        );
+      })()}
 
       <footer className="mt-12 sm:mt-16 pt-5 sm:pt-6 border-t border-border space-y-2">
         <p className="text-xs text-ds-tertiary leading-relaxed">
