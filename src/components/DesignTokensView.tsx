@@ -133,21 +133,21 @@ function TokenRow({ token, isColor }: { token: CSSToken; isColor: boolean }) {
   const showSwatch = isColor && isVisualColor(token.value);
 
   return (
-    <div className="group flex items-center gap-3 py-1.5 px-2 -mx-2 rounded-lg hover:bg-surface-subtle transition-colors duration-100">
+    <div className="group flex items-center gap-2 sm:gap-3 py-1.5 px-2 -mx-2 rounded-lg hover:bg-surface-subtle transition-colors duration-100 min-w-0">
       {showSwatch && (
         <span
-          className="w-5 h-5 rounded-md border border-border shrink-0 shadow-sm"
+          className="w-4 h-4 sm:w-5 sm:h-5 rounded-md border border-border shrink-0 shadow-sm"
           style={{ backgroundColor: token.value }}
         />
       )}
 
-      {isColor && !showSwatch && <span className="w-5 shrink-0" />}
+      {isColor && !showSwatch && <span className="w-4 sm:w-5 shrink-0" />}
 
-      <span className="font-mono text-xs text-ds-secondary truncate min-w-0 flex-1">
+      <span className="font-mono text-[11px] sm:text-xs text-ds-secondary truncate min-w-0 flex-1">
         {displayName}
       </span>
 
-      <span className="font-mono text-[11px] text-ds-tertiary truncate max-w-[12rem] sm:max-w-[18rem] text-right" title={token.value}>
+      <span className="font-mono text-[10px] sm:text-[11px] text-ds-tertiary truncate max-w-[7rem] sm:max-w-[18rem] text-right shrink-0" title={token.value}>
         {token.value}
       </span>
 
@@ -295,7 +295,7 @@ function ColorSwatch({ token }: { token: CSSToken }) {
     tooltipRect &&
     createPortal(
       <div
-        className="fixed bg-bg-elevated border border-border rounded-lg px-2.5 py-1.5 shadow-lg pointer-events-none whitespace-nowrap transition-opacity duration-150"
+        className="fixed bg-bg-elevated border border-border rounded-lg px-2.5 py-1.5 shadow-lg whitespace-nowrap transition-opacity duration-150 select-text cursor-text"
         style={{
           left: tooltipRect.left,
           top: tooltipRect.top - 6,
@@ -342,10 +342,10 @@ function EmptyTokens() {
           <path d="M11 11h4v4h-4z" strokeDasharray="2 2" />
         </svg>
       </div>
-      <p className="text-sm text-ds-secondary mb-1">No design tokens found</p>
+      <p className="text-sm text-ds-secondary mb-1">No CSS variables found</p>
       <p className="text-xs text-ds-tertiary leading-relaxed max-w-xs mx-auto">
         This page doesn&apos;t use CSS custom properties (<code className="text-[11px] font-mono bg-surface-subtle px-1 py-0.5 rounded">--*</code>).
-        Design tokens help keep a system consistent — colors, spacing, and typography
+        CSS variables help keep a system consistent — colors, spacing, and typography
         defined once and reused everywhere.
       </p>
     </div>
@@ -483,15 +483,15 @@ function CategoryBreakdown({ stats, total }: { stats: TokenCategoryStats[]; tota
       {/* Legend as structured rows */}
       <div className="space-y-1">
         {stats.map((s) => (
-          <div key={s.category} className="flex items-center gap-2 text-[11px]">
+          <div key={s.category} className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-[11px]">
             <span className={`w-2 h-2 rounded-sm shrink-0 ${CAT_COLORS[s.category] || "bg-border"}`} />
-            <span className="text-ds-secondary min-w-[5rem]">{s.label}</span>
-            <span className="font-mono text-ds-tertiary">{s.count}</span>
+            <span className="text-ds-secondary min-w-[3.5rem] sm:min-w-[5rem] truncate">{s.label}</span>
+            <span className="font-mono text-ds-tertiary shrink-0">{s.count}</span>
             {s.uniqueValues < s.count && (
-              <span className="font-mono text-ds-tertiary/50 text-[10px]">({s.uniqueValues} unique)</span>
+              <span className="font-mono text-ds-tertiary/50 text-[10px] hidden sm:inline">({s.uniqueValues} unique)</span>
             )}
             {s.aliasedCount > 0 && (
-              <span className="font-mono text-ds-olive/60 text-[10px] ml-auto">{s.aliasedCount} aliased</span>
+              <span className="font-mono text-ds-olive/60 text-[10px] ml-auto shrink-0 hidden sm:inline">{s.aliasedCount} aliased</span>
             )}
           </div>
         ))}
@@ -590,13 +590,13 @@ function ScalesList({ items }: { items: TokenScaleAnalysis[] }) {
       {items.map((s, i) => (
         <div key={i}>
           {/* Label left, bar right */}
-          <div className="flex items-center gap-3 mb-1.5">
-            <div className="flex items-center gap-2 shrink-0 min-w-[7rem]">
-              <span className="text-[11px] font-semibold text-ds-secondary">{s.label}</span>
-              {s.detectedBase && <span className="text-[10px] font-mono text-ds-olive">base-{s.detectedBase}</span>}
-              {s.detectedRatio && <span className="text-[10px] font-mono text-ds-olive">{s.detectedRatio}×</span>}
+          <div className="flex items-center gap-2 sm:gap-3 mb-1.5 flex-wrap sm:flex-nowrap">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0 sm:min-w-[7rem]">
+              <span className="text-[10px] sm:text-[11px] font-semibold text-ds-secondary truncate">{s.label}</span>
+              {s.detectedBase && <span className="text-[10px] font-mono text-ds-olive shrink-0">base-{s.detectedBase}</span>}
+              {s.detectedRatio && <span className="text-[10px] font-mono text-ds-olive shrink-0">{s.detectedRatio}×</span>}
             </div>
-            <div className="flex-1 flex items-center gap-2">
+            <div className="flex-1 flex items-center gap-2 min-w-[6rem]">
               <div className="flex-1 h-1.5 rounded-full bg-border overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all ${
@@ -609,7 +609,7 @@ function ScalesList({ items }: { items: TokenScaleAnalysis[] }) {
             </div>
           </div>
           {s.offScale.length > 0 && (
-            <div className="flex flex-wrap gap-1 ml-[7rem] pl-3">
+            <div className="flex flex-wrap gap-1 sm:ml-[7rem] sm:pl-3">
               {s.offScale.slice(0, 8).map((name) => (
                 <span key={name} className="text-[10px] font-mono text-ds-amber bg-ds-amber/8 px-1.5 py-0.5 rounded">
                   {name}
@@ -650,7 +650,7 @@ function InsightsPanel({ insights, totalTokens }: { insights: TokenInsights; tot
 
       <div className="p-4 space-y-5">
         {/* ── Row 1: Key stats ── */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
           <StatTile
             label="Categories"
             value={categoryStats.length}
@@ -679,10 +679,10 @@ function InsightsPanel({ insights, totalTokens }: { insights: TokenInsights; tot
             </p>
             <div className="space-y-1">
               {categoryStats.filter(s => s.min && s.max).map(s => (
-                <div key={s.category} className="flex items-center gap-2 text-[11px]">
+                <div key={s.category} className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-[11px]">
                   <span className={`w-2 h-2 rounded-sm shrink-0 ${CAT_COLORS[s.category] || "bg-border"}`} />
-                  <span className="text-ds-secondary min-w-[5rem]">{s.label}</span>
-                  <span className="font-mono text-ds-tertiary ml-auto">{s.min}</span>
+                  <span className="text-ds-secondary min-w-[3.5rem] sm:min-w-[5rem] truncate">{s.label}</span>
+                  <span className="font-mono text-ds-tertiary ml-auto shrink-0">{s.min}</span>
                   <span className="text-ds-tertiary/40">→</span>
                   <span className="font-mono text-ds-primary">{s.max}</span>
                 </div>
@@ -774,7 +774,7 @@ interface Props {
 export function countTokenMatches(data: DesignTokensResult, rawQuery: string): number {
   const q = rawQuery.toLowerCase().trim();
   if (!q) return 0;
-  if ("design tokens".includes(q)) return data.totalCount;
+  if ("css variables".includes(q)) return data.totalCount;
   return data.groups.reduce(
     (sum, g) =>
       sum +

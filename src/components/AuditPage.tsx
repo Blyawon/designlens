@@ -169,7 +169,7 @@ function BrowserChrome({
 }) {
   const inner = (
     <div
-      className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 border-b rounded-t-2xl ${
+      className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 border-b ${
         ghost
           ? "border-border/30 bg-bg-card/30"
           : "border-border/40 bg-[var(--bg-elevated)]"
@@ -388,7 +388,7 @@ function SectionGroup({
         <button
           onClick={toggle}
           className={[
-            "w-full flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer pointer-events-auto",
+            "w-full flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl cursor-pointer pointer-events-auto min-w-0",
             "border border-border bg-bg-card backdrop-blur-sm shadow-sm",
             "transition-all duration-150 ease-out",
             "hover:border-ds-olive/30 hover:shadow-md hover:bg-surface-subtle",
@@ -410,11 +410,11 @@ function SectionGroup({
           >
             <path d="M4.5 2L8.5 6L4.5 10" />
           </svg>
-          <span className="text-sm sm:text-base font-bold uppercase tracking-wider text-ds-olive">
+          <span className="text-sm sm:text-base font-bold uppercase tracking-wider text-ds-olive truncate">
             {label}
           </span>
           {detail && !query && (
-            <span className="text-xs text-ds-tertiary font-mono ml-1">
+            <span className="hidden sm:inline text-xs text-ds-tertiary font-mono ml-1 truncate">
               {detail}
             </span>
           )}
@@ -748,7 +748,7 @@ export default function AuditPage() {
 
       {/* ── Hero ── */}
       <header className="relative mb-10 sm:mb-14">
-        <div className="flex items-center gap-2 mb-4 sm:mb-5 -ml-[14px]">
+        <div className="flex items-center gap-2 mb-4 sm:mb-5 sm:-ml-[14px]">
           <span
             className="w-1.5 h-1.5 rounded-full bg-ds-olive"
             style={{ animation: "pulse-dot 2.5s ease-in-out infinite" }}
@@ -1044,7 +1044,7 @@ export default function AuditPage() {
               const typoMatch = q && "typography".includes(q);
               const colorMatch = q && "colors".includes(q);
               const spacingMatch = q && "spacing & layout spacing layout".includes(q);
-              const tokenMatch = q && "design tokens".includes(q);
+              const tokenMatch = q && "css variables".includes(q);
               /* Child query: pass "" when the parent section label matches */
               const typoQ = typoMatch ? "" : filterQuery;
               const colorQ = colorMatch ? "" : filterQuery;
@@ -1195,9 +1195,9 @@ export default function AuditPage() {
                     )}
                   </SectionGroup>
 
-                  {/* ── Design Tokens (always rendered — has empty state) ── */}
+                  {/* ── CSS Variables (always rendered — has empty state) ── */}
                   <SectionGroup
-                    label="Design Tokens"
+                    label="CSS Variables"
                     detail={
                       result.designTokens.totalCount === 0
                         ? "none found"

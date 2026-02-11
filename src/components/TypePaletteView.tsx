@@ -9,12 +9,35 @@ interface Props {
 }
 
 function SelectorTooltip({ elements }: { elements: string[] }) {
+  const [copied, setCopied] = useState(false);
   if (elements.length === 0) return null;
+
+  const copyAll = () => {
+    navigator.clipboard.writeText(elements.join("\n"));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1200);
+  };
+
   return (
-    <div className="absolute left-0 bottom-full mb-1.5 z-50 bg-bg-card border border-border rounded-lg px-3 py-2.5 shadow-lg max-w-sm pointer-events-none">
-      <p className="text-xs text-ds-tertiary mb-1.5 uppercase tracking-wider">
-        Applied to
-      </p>
+    <div className="absolute left-0 bottom-full pb-1.5 z-50 select-text cursor-text">
+    <div className="bg-bg-card border border-border rounded-lg px-3 py-2.5 shadow-lg max-w-sm">
+      <div className="flex items-center justify-between mb-1.5">
+        <p className="text-xs text-ds-tertiary uppercase tracking-wider">
+          Applied to
+        </p>
+        <button
+          onClick={copyAll}
+          className="flex items-center gap-1 text-[10px] text-ds-tertiary hover:text-ds-primary transition-colors cursor-pointer bg-transparent border-none p-0"
+          title="Copy all selectors"
+        >
+          {copied ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ds-green"><polyline points="20 6 9 17 4 12" /></svg>
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
+          )}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
       {elements.map((el, i) => (
         <p
           key={i}
@@ -23,6 +46,7 @@ function SelectorTooltip({ elements }: { elements: string[] }) {
           {el}
         </p>
       ))}
+    </div>
     </div>
   );
 }

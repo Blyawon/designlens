@@ -12,19 +12,19 @@ export default function PatternsView({ data }: Props) {
 
   return (
     <div className="border-t border-border pt-4 pb-6">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium text-ds-primary">
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <h3 className="text-sm font-medium text-ds-primary shrink-0">
           Component Patterns
         </h3>
-        <div className="flex items-center gap-2 text-[12px]">
+        <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-[12px] min-w-0 flex-wrap justify-end">
           <span className="text-ds-green font-mono">{data.coverage}%</span>
-          <span className="text-ds-tertiary">coverage</span>
+          <span className="text-ds-tertiary hidden sm:inline">coverage</span>
           <span className="text-ds-tertiary">·</span>
-          <span className="text-ds-tertiary font-mono">
-            {data.patterns.length} patterns
+          <span className="text-ds-tertiary font-mono shrink-0">
+            {data.patterns.length} <span className="hidden sm:inline">patterns</span><span className="sm:hidden">pat</span>
           </span>
-          <span className="text-ds-tertiary">·</span>
-          <span className="text-ds-tertiary font-mono">
+          <span className="text-ds-tertiary hidden sm:inline">·</span>
+          <span className="text-ds-tertiary font-mono shrink-0 hidden sm:inline">
             {data.oneOffs} one-offs
           </span>
         </div>
@@ -62,7 +62,7 @@ export default function PatternsView({ data }: Props) {
         {data.patterns.slice(0, 10).map((p, i) => (
           <div key={i}>
             <button
-              className="w-full flex items-center gap-3 py-1.5 text-left cursor-pointer group"
+              className="w-full flex items-center gap-2 sm:gap-3 py-1.5 text-left cursor-pointer group min-w-0"
               onClick={() => setExpanded(expanded === i ? null : i)}
             >
               {/* color dot */}
@@ -71,15 +71,15 @@ export default function PatternsView({ data }: Props) {
                 style={{ backgroundColor: p.color }}
               />
               {/* name */}
-              <span className="text-[13px] text-ds-primary flex-1">
+              <span className="text-[12px] sm:text-[13px] text-ds-primary flex-1 truncate min-w-0">
                 {p.name}
               </span>
               {/* count */}
-              <span className="text-[11px] text-ds-tertiary font-mono">
-                {p.count} elements
+              <span className="text-[10px] sm:text-[11px] text-ds-tertiary font-mono shrink-0">
+                ×{p.count}
               </span>
-              {/* tags */}
-              <span className="text-[10px] text-ds-tertiary font-mono">
+              {/* tags — hidden on mobile */}
+              <span className="hidden sm:inline text-[10px] text-ds-tertiary font-mono shrink-0">
                 &lt;{p.tags.slice(0, 2).join(", ")}&gt;
               </span>
             </button>

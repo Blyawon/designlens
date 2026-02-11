@@ -13,7 +13,7 @@ export default function NotFound() {
       <h1 className="text-6xl md:text-7xl font-serif tracking-tight text-ds-primary leading-[0.95]">
         This page has
         <br />
-        <span className="text-ds-tertiary">0 design tokens.</span>
+        <span className="text-ds-tertiary">0 CSS variables.</span>
       </h1>
 
       <p className="text-lg text-ds-secondary mt-6 max-w-md leading-relaxed">

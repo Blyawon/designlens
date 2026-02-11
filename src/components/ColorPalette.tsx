@@ -161,12 +161,12 @@ export default function ColorPalette({ data, score, filterQuery }: Props) {
             {score.signals.map((s) => (
               <div
                 key={s.name}
-                className="flex items-center gap-2 sm:gap-3 text-xs"
+                className="flex items-center gap-1.5 sm:gap-3 text-xs"
               >
-                <span className="w-20 sm:w-28 text-ds-tertiary truncate shrink-0">
+                <span className="w-16 sm:w-28 text-ds-tertiary truncate shrink-0 text-[10px] sm:text-xs">
                   {s.name}
                 </span>
-                <div className="w-20 sm:w-28 h-2 bg-[var(--surface-overlay)] rounded-full overflow-hidden shrink-0">
+                <div className="w-16 sm:w-28 h-2 bg-[var(--surface-overlay)] rounded-full overflow-hidden shrink-0">
                   <div
                     className={`h-full rounded-full ${
                       s.value >= 80

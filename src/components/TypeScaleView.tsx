@@ -14,22 +14,22 @@ export default function TypeScaleView({ data }: Props) {
   return (
     <div className="border-t border-border pt-5 pb-6">
       {/* Lighter header — always-visible content */}
-      <div className="flex items-center justify-between mb-5">
-        <p className="text-sm text-ds-tertiary font-medium">Type Scale</p>
-        <div className="flex items-center gap-2 text-xs">
+      <div className="flex items-center justify-between gap-2 mb-5">
+        <p className="text-sm text-ds-tertiary font-medium shrink-0">Type Scale</p>
+        <div className="flex items-center gap-2 text-xs min-w-0 justify-end flex-wrap">
           {data.scaleName ? (
-            <span className="text-ds-green font-mono font-medium">
+            <span className="text-ds-green font-mono font-medium truncate">
               {data.scaleName} ({data.detectedRatio})
             </span>
           ) : data.detectedRatio ? (
-            <span className="text-ds-amber font-mono">
-              ~{data.detectedRatio} (no standard match)
+            <span className="text-ds-amber font-mono truncate">
+              ~{data.detectedRatio} <span className="hidden sm:inline">(no standard match)</span>
             </span>
           ) : (
             <span className="text-ds-tertiary">No scale detected</span>
           )}
-          <span className="text-ds-tertiary">·</span>
-          <span className="text-ds-tertiary font-mono">
+          <span className="text-ds-tertiary hidden sm:inline">·</span>
+          <span className="text-ds-tertiary font-mono shrink-0">
             base {data.baseSize}px
           </span>
         </div>

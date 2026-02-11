@@ -67,7 +67,7 @@ export async function runAudit(
   }
 
   const emptyInsights = { categoryStats: [], duplicates: [], aliasingRate: 0, nearDuplicates: [], namingIssues: [], shadowedValues: [], orphans: [], scales: [] };
-  const designTokens = safe("Categorising design tokens…", "tokens", () => analyzeTokens(cssTokens, hardcodedMap), { totalCount: 0, groups: [], insights: emptyInsights });
+  const designTokens = safe("Categorising CSS variables…", "tokens", () => analyzeTokens(cssTokens, hardcodedMap), { totalCount: 0, groups: [], insights: emptyInsights });
 
   onProgress?.({ phase: "scoring", message: "Computing scores…" });
   const scores = computeScores(

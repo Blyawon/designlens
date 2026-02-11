@@ -28,15 +28,15 @@ export default function FixPlanDisplay({ actions }: Props) {
       </h3>
       <div className="space-y-3">
         {actions.map((a, i) => (
-          <div key={i} className="flex gap-3">
+          <div key={i} className="flex gap-2 sm:gap-3">
             <div className="flex flex-col items-center pt-1.5 shrink-0">
               <div
                 className={`w-2 h-2 rounded-full ${severityDot[a.severity]}`}
               />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-medium text-ds-primary">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <span className="text-xs sm:text-sm font-medium text-ds-primary">
                   {a.title}
                 </span>
                 <span
@@ -50,8 +50,9 @@ export default function FixPlanDisplay({ actions }: Props) {
                 {a.description}
               </p>
               {a.items.length > 0 && (
-                <p className="text-xs font-mono text-ds-secondary mt-1">
-                  {a.items.join(" · ")}
+                <p className="text-xs font-mono text-ds-secondary mt-1 break-words overflow-hidden">
+                  {a.items.slice(0, 6).join(" · ")}
+                  {a.items.length > 6 && <span className="text-ds-tertiary"> +{a.items.length - 6} more</span>}
                 </p>
               )}
             </div>
