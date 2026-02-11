@@ -159,6 +159,7 @@ function BrowserChrome({
   onShare,
   shared,
   onUrlClick,
+  onClose,
 }: {
   url: string;
   ghost?: boolean;
@@ -166,6 +167,7 @@ function BrowserChrome({
   onShare?: () => void;
   shared?: boolean;
   onUrlClick?: () => void;
+  onClose?: () => void;
 }) {
   const inner = (
     <div
@@ -176,7 +178,17 @@ function BrowserChrome({
       }`}
     >
       <div className="flex gap-1.5 shrink-0">
-        <div className="w-2 h-2 rounded-full bg-[var(--surface-dots)]" />
+        {onClose ? (
+          <button
+            onClick={onClose}
+            aria-label="Close analysis"
+            className="group relative flex items-center justify-center w-5 h-5 -m-1.5 rounded-full cursor-pointer transition-colors duration-150 hover:bg-ds-red/15 active:bg-ds-red/25"
+          >
+            <span className="block w-2 h-2 rounded-full bg-[var(--surface-dots)] transition-colors duration-150 group-hover:bg-ds-red" />
+          </button>
+        ) : (
+          <div className="w-2 h-2 rounded-full bg-[var(--surface-dots)]" />
+        )}
         <div className="w-2 h-2 rounded-full bg-[var(--surface-dots)]" />
         <div className="w-2 h-2 rounded-full bg-[var(--surface-dots)]" />
       </div>
@@ -561,6 +573,20 @@ export default function AuditPage() {
     }, 200);
   }, []);
 
+  /* Reset everything back to the initial "just visited" state */
+  const clearAnalysis = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setStatus("idle");
+    setResult(null);
+    setProgress("");
+    setError("");
+    setCopied(false);
+    setFilterQuery("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    setTimeout(() => urlInputRef.current?.focus(), 400);
+  }, []);
+
   /* Clean up on unmount (e.g. user navigates away) */
   useEffect(() => {
     return () => { abortRef.current?.abort(); };
@@ -869,7 +895,7 @@ export default function AuditPage() {
           className="rounded-2xl border border-border shadow-sm bg-bg-card animate-fade-up"
           style={{ clipPath: "inset(0 round 1rem)" }}
         >
-          <BrowserChrome url={result.url} sticky onShare={handleCopy} shared={copied} onUrlClick={() => {
+          <BrowserChrome url={result.url} sticky onShare={handleCopy} shared={copied} onClose={clearAnalysis} onUrlClick={() => {
             window.scrollTo({ top: 0, behavior: "smooth" });
             setTimeout(() => urlInputRef.current?.focus(), 400);
           }} />
