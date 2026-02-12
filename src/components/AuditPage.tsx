@@ -358,8 +358,9 @@ const confColor: Record<string, string> = {
    under a single header that toggles the whole group open/closed.
    When forceOpen is true (search active), the group is always expanded. */
 
-/* Sticky offset for L1 headers = browser chrome (45/49px) + search bar (55px) */
-const SEARCH_BAR_H = "top-[100px] sm:top-[104px]";
+/* Sticky offset for L1 section headers.
+   Normal (inline card): browser chrome height + search bar height.
+   Modal: chrome is outside the scroll container, so only search-bar height. */
 
 function SectionGroup({
   label,
@@ -369,6 +370,7 @@ function SectionGroup({
   forceOpen,
   filterQuery,
   matchCount,
+  stickyTop,
   children,
 }: {
   label: string;
@@ -378,6 +380,7 @@ function SectionGroup({
   forceOpen?: boolean;
   filterQuery?: string;
   matchCount?: number;
+  stickyTop?: number;
   children: React.ReactNode;
 }) {
   const [userOpen, setUserOpen] = useState(defaultOpen);
@@ -409,7 +412,8 @@ function SectionGroup({
   return (
     <div className={first ? "pt-5 sm:pt-6" : "pt-4 sm:pt-5"}>
       <div
-        className={`sticky ${SEARCH_BAR_H} z-30 -mx-5 sm:-mx-8 px-4 sm:px-7 pt-2.5 pb-1 pointer-events-none`}
+        className="sticky z-30 -mx-5 sm:-mx-8 px-4 sm:px-7 pt-2.5 pb-1 pointer-events-none"
+        style={{ top: stickyTop ?? 100 }}
       >
         <button
           onClick={toggle}
@@ -1065,8 +1069,11 @@ export default function AuditPage() {
           <div className={`${inPad} pb-5 sm:pb-8`}>
 
             {/* ── Sticky global search ── */}
-            <div className="sticky top-[45px] sm:top-[49px] z-40 -mx-5 sm:-mx-8 px-4 sm:px-7 pt-3 pb-2 bg-bg-card/95 backdrop-blur-sm border-b border-transparent"
-              style={{ borderColor: filterQuery ? 'var(--border)' : 'transparent' }}
+            <div className="sticky z-40 -mx-5 sm:-mx-8 px-4 sm:px-7 pt-3 pb-2 bg-bg-card/95 backdrop-blur-sm border-b border-transparent"
+              style={{
+                top: expanded ? 0 : 45,
+                borderColor: filterQuery ? 'var(--border)' : 'transparent',
+              }}
             >
               <div className="relative">
                 <svg
@@ -1180,6 +1187,7 @@ export default function AuditPage() {
                     forceOpen={!!filterQuery}
                     filterQuery={filterQuery}
                     matchCount={typoCount}
+                    stickyTop={expanded ? 55 : 100}
                   >
                     {!typoQ && (
                       <>
@@ -1230,6 +1238,7 @@ export default function AuditPage() {
                     forceOpen={!!filterQuery}
                     filterQuery={filterQuery}
                     matchCount={colorCount}
+                    stickyTop={expanded ? 55 : 100}
                   >
                     {!colorQ && <ColorRolesView data={result.colorRoles} />}
                     <ColorPalette data={result.colorSprawl} score={scoreFor("Colors")} filterQuery={colorQ} />
@@ -1242,6 +1251,7 @@ export default function AuditPage() {
                     forceOpen={!!filterQuery}
                     filterQuery={filterQuery}
                     matchCount={spacingCount}
+                    stickyTop={expanded ? 55 : 100}
                   >
                     <SprawlSection title="Spacing" score={scoreFor("Spacing")} values={result.spacingSprawl.allValues} flagged={offGridSet} sortable filterQuery={spacingQ}>
                       {!spacingQ && (
@@ -1289,6 +1299,7 @@ export default function AuditPage() {
                     forceOpen={!!filterQuery}
                     filterQuery={filterQuery}
                     matchCount={q ? countTokenMatches(result.designTokens, tokenQ || filterQuery) : undefined}
+                    stickyTop={expanded ? 55 : 100}
                   >
                     <DesignTokensView
                       data={result.designTokens}
