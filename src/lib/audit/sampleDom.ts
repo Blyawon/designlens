@@ -289,33 +289,30 @@ async function sampleDomOnce(
     checkAbort();
 
     /* ── Viewport + JS ──
-       On serverless: ALWAYS disable page JavaScript (~500MB saving).
-       Also use a smaller viewport (1024px vs 1280px) — fewer pixels
-       means less compositing memory. Responsive breakpoints still
-       trigger at 1024px so we get realistic desktop layouts. */
+       JS is enabled unless we're in aggressive mode (crash fallback).
+       Disabling JS on serverless saved memory but made results wrong: many
+       sites load fonts and apply styles via JS, so we got fallback fonts
+       and incomplete DOM. We enable JS everywhere for accurate analysis;
+       heavy pages that OOM still get retries then aggressive fallback. */
     const VIEWPORT_WIDTH = aggressiveMode ? 800 : (isServerless ? 1024 : 1280);
     const VIEWPORT_HEIGHT = aggressiveMode ? 600 : (isServerless ? 600 : 900);
 
     const page = await browser.newPage({
       viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
-      javaScriptEnabled: !isServerless && !aggressiveMode,
+      javaScriptEnabled: !aggressiveMode,
       userAgent:
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     });
     page.setDefaultTimeout(aggressiveMode ? 15_000 : (isServerless ? 20_000 : 30_000));
 
     /* Block heavy resources to save memory.
-       Serverless: block images, media, and scripts (JS is disabled anyway).
-       We do NOT block fonts: getComputedStyle returns the resolved font
-       that actually loaded; if font files are aborted, every element
-       resolves to the fallback (e.g. Times New Roman), so typography
-       analytics would be wrong. Allowing fonts keeps type sprawl accurate.
-       Aggressive: also block fonts + "other" to minimise memory on crash retry.
-       Locally: keep fonts + images for screenshots, block media. */
+       We allow scripts and fonts so the page runs correctly (typography
+       and DOM match local). Block only media and images on serverless;
+       aggressive mode blocks everything except HTML/CSS for crash recovery. */
     const blockTypes: string[] = aggressiveMode
       ? ["media", "image", "font", "script", "other"]
       : isServerless
-        ? ["media", "image", "script"]
+        ? ["media", "image"]
         : ["media"];
 
     /* In aggressive mode, also block known heavy third-party domains */
