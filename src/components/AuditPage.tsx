@@ -583,6 +583,7 @@ export default function AuditPage() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [modalClosing, setModalClosing] = useState(false);
+  const [modalMinimizing, setModalMinimizing] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [minimizing, setMinimizing] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -729,6 +730,7 @@ export default function AuditPage() {
     setFilterQuery("");
     setExpanded(false);
     setModalClosing(false);
+    setModalMinimizing(false);
     setMinimized(false);
     setMinimizing(false);
     setRestoring(false);
@@ -743,7 +745,7 @@ export default function AuditPage() {
 
   /* Collapse the fullscreen modal with an exit animation */
   const collapseModal = useCallback(() => {
-    if (!expanded || modalClosing) return;
+    if (!expanded || modalClosing || modalMinimizing) return;
     setModalClosing(true);
     /* Wait for exit animation to finish before unmounting.
        Card: 0.3s  Backdrop: 0.05s delay + 0.25s = 0.3s total. */
@@ -751,23 +753,22 @@ export default function AuditPage() {
       setExpanded(false);
       setModalClosing(false);
     }, 300);
-  }, [expanded, modalClosing]);
+  }, [expanded, modalClosing, modalMinimizing]);
 
   /* Minimize the card into the dock chip — the macOS yellow-dot easter egg */
   const minimizeCard = useCallback(() => {
-    if (minimized || minimizing) return;
-    /* If in fullscreen modal, collapse first then minimize */
+    if (minimized || minimizing || modalMinimizing) return;
     if (expanded) {
-      setModalClosing(true);
+      /* From modal → dock chip directly.
+         Play a shrink-down animation on the modal, then jump straight
+         to minimized. The inline card is never rendered in between. */
+      setModalMinimizing(true);
       setTimeout(() => {
+        setModalMinimizing(false);
         setExpanded(false);
-        setModalClosing(false);
-        setMinimizing(true);
-        setTimeout(() => {
-          setMinimizing(false);
-          setMinimized(true);
-        }, 400);
-      }, 300);
+        wasRestored.current = true; // so restore skips first-entrance animation
+        setMinimized(true);
+      }, 400);
     } else {
       setMinimizing(true);
       setTimeout(() => {
@@ -775,7 +776,7 @@ export default function AuditPage() {
         setMinimized(true);
       }, 400);
     }
-  }, [minimized, minimizing, expanded]);
+  }, [minimized, minimizing, modalMinimizing, expanded]);
 
   /* Restore the card from the dock chip.
      Brief exit animation on dock → then card scales back up. */
@@ -1556,22 +1557,27 @@ export default function AuditPage() {
 
         /* ── Fullscreen modal ── */
         if (expanded) {
+          const exiting = modalClosing || modalMinimizing;
           return createPortal(
             <div className="fixed inset-0 z-[9999]">
               <div
                 className={`absolute inset-0 bg-black/30 backdrop-blur-md ${
-                  modalClosing ? "animate-modal-backdrop-out" : "animate-modal-backdrop"
+                  exiting ? "animate-modal-backdrop-out" : "animate-modal-backdrop"
                 }`}
-                onClick={collapseModal}
+                onClick={modalMinimizing ? undefined : collapseModal}
               />
               <div
                 className={`absolute inset-3 sm:inset-5 lg:inset-8 rounded-2xl border border-border bg-bg-card shadow-2xl flex flex-col overflow-hidden ${
-                  modalClosing ? "animate-modal-collapse" : "animate-modal-expand"
+                  modalMinimizing
+                    ? "animate-modal-minimize"
+                    : modalClosing
+                      ? "animate-modal-collapse"
+                      : "animate-modal-expand"
                 }`}
                 style={{ clipPath: "inset(0 round 1rem)" }}
               >
                 <div className={`flex flex-col flex-1 min-h-0 ${
-                  modalClosing ? "animate-modal-content-out" : "animate-modal-content-in"
+                  exiting ? "animate-modal-content-out" : "animate-modal-content-in"
                 }`}>
                   {chrome}
                   <div className="flex-1 overflow-y-auto overflow-x-hidden">

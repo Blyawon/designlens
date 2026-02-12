@@ -152,6 +152,7 @@
   --animate-modal-content-in: modalContentIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
   --animate-modal-backdrop-out: modalBackdropOut 0.25s ease-in 0.05s both;
   --animate-modal-collapse: modalCollapse 0.3s cubic-bezier(0.4, 0, 1, 1) both;
+  --animate-modal-minimize: modalMinimize 0.4s cubic-bezier(0.4, 0, 0.2, 1) both;
   --animate-modal-content-out: modalContentOut 0.15s ease-in both;
   --animate-minimize: minimize 0.4s cubic-bezier(0.4, 0, 0.2, 1) both;
   --animate-restore-shell: restoreShell 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -302,6 +303,12 @@
   to   { opacity: 0; transform: translateY(48px); }
 }
 
+/* Fullscreen modal — card shrinks into the dock (minimize from modal) */
+@keyframes modalMinimize {
+  0%   { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(60%) scale(0.35); }
+}
+
 /* Fullscreen modal — inner content fades in after shell arrives */
 @keyframes modalContentIn {
   from { opacity: 0; }
@@ -425,6 +432,12 @@ body {
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
   transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+/* Text selection — olive tint that matches the accent palette */
+::selection {
+  background: var(--olive);
+  color: #fff;
 }
 
 /* Scrollbar */
