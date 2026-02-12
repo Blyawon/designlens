@@ -1624,6 +1624,11 @@ export default function AuditPage() {
               </div>
 
               {/* Dock chip — fixed at bottom center */}
+              {(() => {
+                const s = result.scores.overall;
+                const dockStroke = s >= 90 ? "var(--green)" : s >= 75 ? "var(--blue)" : s >= 55 ? "var(--amber)" : "var(--red)";
+                const dockText = s >= 90 ? "text-ds-green" : s >= 75 ? "text-ds-blue" : s >= 55 ? "text-ds-amber" : "text-ds-red";
+                return (
               <div
                 className={`fixed bottom-6 left-1/2 z-50 cursor-pointer group ${
                   dockExiting ? "animate-dock-out" : "animate-dock-in"
@@ -1636,13 +1641,13 @@ export default function AuditPage() {
                     <svg viewBox="0 0 72 72" className="w-full h-full -rotate-90">
                       <circle cx="36" cy="36" r="28" fill="none" stroke="var(--border)" strokeWidth="4" opacity="0.3" />
                       <circle
-                        cx="36" cy="36" r="28" fill="none" stroke="var(--olive)" strokeWidth="4"
+                        cx="36" cy="36" r="28" fill="none" stroke={dockStroke} strokeWidth="4"
                         strokeDasharray={2 * Math.PI * 28}
                         strokeDashoffset={2 * Math.PI * 28 - (result.scores.overall / 100) * 2 * Math.PI * 28}
                         strokeLinecap="round"
                       />
                     </svg>
-                    <span className="absolute inset-0 flex items-center justify-center text-[9px] font-serif font-bold text-ds-olive">
+                    <span className={`absolute inset-0 flex items-center justify-center text-[9px] font-serif font-bold ${dockText}`}>
                       {result.scores.grade}
                     </span>
                   </div>
@@ -1656,6 +1661,8 @@ export default function AuditPage() {
                   </svg>
                 </div>
               </div>
+                );
+              })()}
             </>
           );
         }
