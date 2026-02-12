@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import ThemeToggle from "@/components/ThemeToggle";
+import ScrollToTop from "@/components/ScrollToTop";
 import AmbientParticles from "@/components/AmbientParticles";
 import "./globals.css";
 
@@ -45,13 +46,23 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} antialiased min-h-screen`}
       >
-        {/* Ambient background particles — stars at night, dust motes by day */}
-        <AmbientParticles />
-        {/* Theme toggle — fixed top-right */}
-        <div className="fixed top-4 right-4 sm:top-5 sm:right-6 z-50">
+        {/* Ambient background particles — stars at night, dust motes by day.
+            Wrapped in a delayed fade so the particle layer materialises
+            alongside the gradient orbs rather than popping in instantly. */}
+        <div style={{ animation: "fadeIn 2s ease-out 0.3s both" }}>
+          <AmbientParticles />
+        </div>
+        {/* Theme toggle — fixed top-right, fades up with the page entrance.
+            Uses fadeUp (not fadeIn) for motion consistency with the content. */}
+        <div
+          className="fixed top-4 right-4 sm:top-5 sm:right-6 z-50"
+          style={{ animation: "fadeUp 0.5s ease-out 0.8s both" }}
+        >
           <ThemeToggle />
         </div>
         {children}
+        {/* Scroll-to-top — fixed bottom-right, with progress ring */}
+        <ScrollToTop />
       </body>
     </html>
   );

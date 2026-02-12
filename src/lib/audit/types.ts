@@ -392,6 +392,8 @@ export interface AuditResult {
   viewportWidth: number;
   pageHeight: number;
   fontFaces: string[];
+  /** Analysis steps that failed and fell back to defaults. */
+  warnings: string[];
 }
 
 // ---- Progress callback for SSE ----

@@ -11,7 +11,10 @@ import TypePaletteView from "./TypePaletteView";
 import ColorPalette from "./ColorPalette";
 import SprawlSection from "./SprawlSection";
 import DesignTokensView, { countTokenMatches } from "./DesignTokensView";
+import PatternsView from "./PatternsView";
+import TextReveal from "./TextReveal";
 import confetti from "canvas-confetti";
+import gsap from "gsap";
 
 type Status = "idle" | "running" | "done" | "error";
 
@@ -30,13 +33,22 @@ const ROTATE_WORDS = [
   "visual tokens.",
 ];
 
-function Typewriter() {
+function Typewriter({ startDelay = 0 }: { startDelay?: number }) {
   const [wordIdx, setWordIdx] = useState(0);
   const [text, setText] = useState("");
   const [deleting, setDeleting] = useState(false);
   const pauseRef = useRef(false);
+  const [ready, setReady] = useState(startDelay === 0);
+
+  /* Wait for the entrance animation to reveal this line before typing */
+  useEffect(() => {
+    if (startDelay <= 0) return;
+    const t = setTimeout(() => setReady(true), startDelay);
+    return () => clearTimeout(t);
+  }, [startDelay]);
 
   useEffect(() => {
+    if (!ready) return;
     const word = ROTATE_WORDS[wordIdx];
     if (!deleting && text === word) {
       pauseRef.current = true;
@@ -58,14 +70,17 @@ function Typewriter() {
       );
     }, speed);
     return () => clearTimeout(t);
-  }, [text, deleting, wordIdx]);
+  }, [text, deleting, wordIdx, ready]);
 
   return (
     <span className="text-ds-olive">
       {text}
       <span
         className="inline-block w-[3px] h-[0.85em] bg-ds-olive/70 ml-0.5 align-baseline relative top-[0.05em]"
-        style={{ animation: "blink 1s step-end infinite" }}
+        style={{
+          animation: ready ? "blink 1s step-end infinite" : "none",
+          opacity: ready ? 1 : 0,
+        }}
       />
     </span>
   );
@@ -160,6 +175,7 @@ function BrowserChrome({
   shared,
   onUrlClick,
   onClose,
+  onMinimize,
   onExpand,
   expanded,
 }: {
@@ -170,6 +186,7 @@ function BrowserChrome({
   shared?: boolean;
   onUrlClick?: () => void;
   onClose?: () => void;
+  onMinimize?: () => void;
   onExpand?: () => void;
   expanded?: boolean;
 }) {
@@ -188,22 +205,32 @@ function BrowserChrome({
             aria-label="Close analysis"
             className="group relative flex items-center justify-center w-5 h-5 -m-1.5 rounded-full cursor-pointer transition-colors duration-150 hover:bg-ds-red/15 active:bg-ds-red/25"
           >
-            <span className="block w-2 h-2 rounded-full bg-[var(--surface-dots)] transition-colors duration-150 group-hover:bg-ds-red" />
+            <span className="block w-2 h-2 rounded-full bg-ds-red" />
           </button>
         ) : (
-          <div className="w-2 h-2 rounded-full bg-[var(--surface-dots)]" />
+          <div className="w-2 h-2 rounded-full bg-ds-red/40" />
         )}
-        <div className="w-2 h-2 rounded-full bg-[var(--surface-dots)]" />
+        {onMinimize ? (
+          <button
+            onClick={onMinimize}
+            aria-label="Minimize"
+            className="group relative flex items-center justify-center w-5 h-5 -m-1.5 rounded-full cursor-pointer transition-colors duration-150 hover:bg-ds-amber/15 active:bg-ds-amber/25"
+          >
+            <span className="block w-2 h-2 rounded-full bg-ds-amber" />
+          </button>
+        ) : (
+          <div className="w-2 h-2 rounded-full bg-ds-amber/40" />
+        )}
         {onExpand ? (
           <button
             onClick={onExpand}
             aria-label={expanded ? "Exit fullscreen" : "Expand fullscreen"}
             className="group relative flex items-center justify-center w-5 h-5 -m-1.5 rounded-full cursor-pointer transition-colors duration-150 hover:bg-ds-green/15 active:bg-ds-green/25"
           >
-            <span className="block w-2 h-2 rounded-full bg-[var(--surface-dots)] transition-colors duration-150 group-hover:bg-ds-green" />
+            <span className="block w-2 h-2 rounded-full bg-ds-green" />
           </button>
         ) : (
-          <div className="w-2 h-2 rounded-full bg-[var(--surface-dots)]" />
+          <div className="w-2 h-2 rounded-full bg-ds-green/40" />
         )}
       </div>
       <div className="flex-1 flex justify-center min-w-0">
@@ -487,7 +514,17 @@ function SteppedProgress({ phase, message }: { phase: string; message: string })
         const done = i < activeIdx;
         const active = i === activeIdx;
         return (
-          <div key={step.id} className="flex items-center gap-3">
+          <div
+            key={step.id}
+            className="flex items-center gap-3"
+            style={{
+              /* Stagger entrance: each step fades up 70ms after the previous.
+                 animation-fill-mode: both keeps it invisible until its delay fires.
+                 Stable keys mean React reuses these DOM nodes — the animation
+                 only fires once on mount, not on every phase update. */
+              animation: `fadeUpSmall 0.35s cubic-bezier(0.22, 1, 0.36, 1) ${i * 0.07}s both`,
+            }}
+          >
             <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-all ${
               done
                 ? "bg-ds-olive"
@@ -536,35 +573,120 @@ export default function AuditPage() {
      when the user clicks Cancel or the timeout fires. */
   const abortRef = useRef<AbortController | null>(null);
 
+  /* Tracks whether the card was restored from minimize — prevents
+     the results entrance animation from re-triggering after restore. */
+  const wasRestored = useRef(false);
+
   /* Bumps on every new error to re-trigger the shake animation. */
   const [errorKey, setErrorKey] = useState(0);
   const [filterQuery, setFilterQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [modalClosing, setModalClosing] = useState(false);
+  const [minimized, setMinimized] = useState(false);
+  const [minimizing, setMinimizing] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [dockExiting, setDockExiting] = useState(false);
+  const [ghostExiting, setGhostExiting] = useState(false);
+  const ghostTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
+
+  /* ── Smooth height transition for the swappable content area ──
+     A ResizeObserver watches the inner wrapper. When the content swaps
+     (ghost → progress → results), we set an explicit height on the outer
+     container and let CSS transition: height do the interpolation.
+     We freeze the height while the modal is expanded because the card
+     content is portalled to document.body and swapInnerRef is empty. */
+  const swapInnerRef = useRef<HTMLDivElement>(null);
+  const [swapHeight, setSwapHeight] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const el = swapInnerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      if (expanded) return; // content is in a portal — keep the frozen height
+      for (const entry of entries) {
+        setSwapHeight(entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [expanded]);
   const showError = useCallback((msg: string) => {
     setError(msg);
     setErrorKey((k) => k + 1);
   }, []);
 
+  /* ── Page entrance animation ──
+     Orchestrates a top-down waterfall reveal on first load.
+     CSS [data-enter] rule hides elements from first paint (SSR-safe).
+     GSAP timeline fades them up in reading order with overlapping starts.
+     On complete, inline styles are cleared and [data-page-entered] is set
+     so remounted elements (e.g. ghost on reset) stay visible. */
+  const containerRef = useRef<HTMLDivElement>(null);
+  const entranceTl = useRef<gsap.core.Timeline | null>(null);
+  const hasAnimated = useRef(false);
+
+  useLayoutEffect(() => {
+    if (hasAnimated.current || !containerRef.current) return;
+    hasAnimated.current = true;
+
+    const container = containerRef.current;
+    const ctx = gsap.context(() => {
+      /* ── Initial states — varied motion character per element type ──
+         Tag: horizontal slide (status indicator slides in from left)
+         Title: deep rise + blur clear (hero text materialises from fog)
+         Desc: standard gentle rise
+         Input: rise + scale inflate (interactive element pops in)
+         Btn: horizontal slide from left (separate from input parent)
+         Badges: gentle opacity + small rise (no scale)
+         Ghost: large rise + scale + blur (heavy card ascends into place)
+         Footer: gentle fade-up */
+      gsap.set('[data-enter="tag"]',     { opacity: 0, x: -20 });
+      gsap.set('[data-enter="title-1"]', { opacity: 0, y: 32, filter: 'blur(8px)' });
+      gsap.set('[data-enter="title-2"]', { opacity: 0, y: 28, filter: 'blur(6px)' });
+      gsap.set('[data-enter="desc"]',    { opacity: 0, y: 20 });
+      gsap.set('[data-enter="input"]',   { opacity: 0, y: 20, scale: 0.98 });
+      gsap.set('[data-enter="ex-item"]', { opacity: 0, y: 6 });
+      gsap.set('[data-enter="btn"]',     { opacity: 0, x: -10 });
+      gsap.set('[data-enter="ghost"]',   { opacity: 0, y: 48, scale: 0.96, filter: 'blur(4px)' });
+      gsap.set('[data-enter="footer"]',  { opacity: 0, y: 16 });
+
+      const tl = gsap.timeline({
+        defaults: { ease: 'power3.out' },
+        onComplete: () => {
+          /* Clean up: remove GSAP inline styles, mark entrance done */
+          container.querySelectorAll('[data-enter]').forEach(el => {
+            gsap.set(el, { clearProps: 'all' });
+          });
+          container.setAttribute('data-page-entered', '');
+          entranceTl.current = null;
+        },
+      });
+
+      entranceTl.current = tl;
+
+      /* Phase 1 — Hero: the eye-catching stuff */
+      tl.to('[data-enter="tag"]',      { opacity: 1, x: 0, duration: 0.7, ease: 'power2.out' }, 0.05)
+        .to('[data-enter="title-1"]',  { opacity: 1, y: 0, filter: 'blur(0px)', duration: 0.8 }, 0.12)
+        .to('[data-enter="title-2"]',  { opacity: 1, y: 0, filter: 'blur(0px)', duration: 0.7 }, 0.35)
+      /* Phase 2 — Supporting copy (bigger gap = breathing room after the hero) */
+        .to('[data-enter="desc"]',     { opacity: 1, y: 0, duration: 0.6 }, 0.55)
+      /* Phase 3 — Interactive elements inflate into place */
+        .to('[data-enter="input"]',    { opacity: 1, y: 0, scale: 1, duration: 0.55 }, 0.7)
+        .to('[data-enter="btn"]',      { opacity: 1, x: 0, duration: 0.5, ease: 'power2.out' }, 0.8)
+        .to('[data-enter="ex-item"]',  { opacity: 1, y: 0, duration: 0.6, stagger: 0.1, ease: 'sine.out' }, 0.95)
+      /* Phase 4 — Visual anchor: the heavy card rises last */
+        .to('[data-enter="ghost"]',    { opacity: 1, y: 0, scale: 1, filter: 'blur(0px)', duration: 0.9, ease: 'power2.out' }, 1.05)
+      /* Phase 5 — Footer: quiet coda */
+        .to('[data-enter="footer"]',   { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' }, 1.3);
+    }, container);
+
+    return () => ctx.revert();
+  }, []);
+
   /* ── Button animation system ── */
   const btnRef = useRef<HTMLButtonElement>(null);
-
-  /* Squeeze-bounce on Analyze click via Web Animations API */
-  const pressAnalyze = useCallback(() => {
-    btnRef.current?.animate(
-      [
-        { transform: "scale(1)" },
-        { transform: "scale(0.92)", offset: 0.2 },
-        { transform: "scale(1.05)", offset: 0.55 },
-        { transform: "scale(0.98)", offset: 0.8 },
-        { transform: "scale(1)" },
-      ],
-      { duration: 350, easing: "cubic-bezier(0.34, 1.56, 0.64, 1)" }
-    );
-  }, []);
 
   /* Shake on Cancel click — emphasize the destructive action, then reset */
   const cancel = useCallback(() => {
@@ -588,6 +710,8 @@ export default function AuditPage() {
     setTimeout(() => {
       abortRef.current?.abort();
       abortRef.current = null;
+      setGhostExiting(false);
+      if (ghostTimerRef.current) { clearTimeout(ghostTimerRef.current); ghostTimerRef.current = null; }
       setStatus("idle");
       setProgress("");
     }, 200);
@@ -605,6 +729,13 @@ export default function AuditPage() {
     setFilterQuery("");
     setExpanded(false);
     setModalClosing(false);
+    setMinimized(false);
+    setMinimizing(false);
+    setRestoring(false);
+    setDockExiting(false);
+    setGhostExiting(false);
+    if (ghostTimerRef.current) { clearTimeout(ghostTimerRef.current); ghostTimerRef.current = null; }
+    wasRestored.current = false;
     setUrl("");
     window.scrollTo({ top: 0, behavior: "smooth" });
     setTimeout(() => urlInputRef.current?.focus(), 400);
@@ -614,12 +745,53 @@ export default function AuditPage() {
   const collapseModal = useCallback(() => {
     if (!expanded || modalClosing) return;
     setModalClosing(true);
-    /* Wait for exit animation to finish before unmounting */
+    /* Wait for exit animation to finish before unmounting.
+       Card: 0.3s  Backdrop: 0.05s delay + 0.25s = 0.3s total. */
     setTimeout(() => {
       setExpanded(false);
       setModalClosing(false);
-    }, 200);
+    }, 300);
   }, [expanded, modalClosing]);
+
+  /* Minimize the card into the dock chip — the macOS yellow-dot easter egg */
+  const minimizeCard = useCallback(() => {
+    if (minimized || minimizing) return;
+    /* If in fullscreen modal, collapse first then minimize */
+    if (expanded) {
+      setModalClosing(true);
+      setTimeout(() => {
+        setExpanded(false);
+        setModalClosing(false);
+        setMinimizing(true);
+        setTimeout(() => {
+          setMinimizing(false);
+          setMinimized(true);
+        }, 400);
+      }, 300);
+    } else {
+      setMinimizing(true);
+      setTimeout(() => {
+        setMinimizing(false);
+        setMinimized(true);
+      }, 400);
+    }
+  }, [minimized, minimizing, expanded]);
+
+  /* Restore the card from the dock chip.
+     Brief exit animation on dock → then card scales back up. */
+  const restoreCard = useCallback(() => {
+    if (!minimized || restoring || dockExiting) return;
+    setDockExiting(true);
+    setTimeout(() => {
+      setDockExiting(false);
+      wasRestored.current = true;
+      setRestoring(true);
+      setMinimized(false);
+      /* Shell 0.4s + content delay 0.12s + content 0.35s = ~0.87s total.
+         Clear restoring after the content is fully opaque. */
+      setTimeout(() => setRestoring(false), 500);
+    }, 180);
+  }, [minimized, restoring, dockExiting]);
 
   /* Clean up on unmount (e.g. user navigates away) */
   useEffect(() => {
@@ -667,11 +839,26 @@ export default function AuditPage() {
       /* Cancel any in-flight request first */
       abortRef.current?.abort();
 
+      /* Complete entrance animation instantly if still in progress —
+         prevents GSAP from fighting the ghost exit CSS animation. */
+      if (entranceTl.current?.isActive()) entranceTl.current.progress(1);
+
       const controller = new AbortController();
       abortRef.current = controller;
 
       if (overrideUrl) setUrl(overrideUrl);
-      pressAnalyze();
+      wasRestored.current = false;
+
+      /* Start ghost exit animation before swapping to progress.
+         The ghost stays mounted for 350ms (its exit animation duration),
+         then unmounts and the staggered progress steps appear. */
+      setGhostExiting(true);
+      if (ghostTimerRef.current) clearTimeout(ghostTimerRef.current);
+      ghostTimerRef.current = setTimeout(() => {
+        setGhostExiting(false);
+        ghostTimerRef.current = null;
+      }, 350);
+
       setStatus("running");
       setProgress("Connecting…");
       setPhase("launching");
@@ -739,7 +926,7 @@ export default function AuditPage() {
         clearTimeout(timer);
       }
     },
-    [url, pressAnalyze, showError]
+    [url, showError]
   );
 
   /* Auto-run audit when opened with ?url= query param (shared links).
@@ -798,15 +985,17 @@ export default function AuditPage() {
   const inPad = "px-5 sm:px-8";
 
   return (
-    <div className="relative max-w-3xl mx-auto px-4 sm:px-6 py-10 sm:py-16">
-      {/* ── Animated gradient orbs (outside overflow clip) ── */}
+    <div ref={containerRef} data-page-enter className="relative max-w-3xl mx-auto px-4 sm:px-6 py-10 sm:py-16">
+      {/* ── Animated gradient orbs (outside overflow clip) ──
+           orbReveal fades opacity from 0 → the element's Tailwind value.
+           Runs alongside drift (transform-only) with no conflict. */}
       <div
         className="pointer-events-none fixed top-0 left-0 w-[420px] sm:w-[520px] h-[420px] sm:h-[520px] rounded-full opacity-[0.18]"
         style={{
           backgroundColor: colors.primary,
           filter: "blur(90px)",
           transition: "background-color 2s ease",
-          animation: "drift 25s ease-in-out infinite",
+          animation: "drift 25s ease-in-out infinite, orbReveal 2.5s ease-out both",
         }}
       />
       <div
@@ -815,13 +1004,13 @@ export default function AuditPage() {
           backgroundColor: colors.secondary,
           filter: "blur(90px)",
           transition: "background-color 2s ease",
-          animation: "drift2 30s ease-in-out infinite",
+          animation: "drift2 30s ease-in-out infinite, orbReveal 2.5s ease-out 0.4s both",
         }}
       />
 
       {/* ── Hero ── */}
       <header className="relative mb-10 sm:mb-14">
-        <div className="flex items-center gap-2 mb-4 sm:mb-5 sm:-ml-[14px]">
+        <div data-enter="tag" className="flex items-center gap-2 mb-4 sm:mb-5 sm:-ml-[14px]">
           <span
             className="w-1.5 h-1.5 rounded-full bg-ds-olive"
             style={{ animation: "pulse-dot 2.5s ease-in-out infinite" }}
@@ -831,18 +1020,17 @@ export default function AuditPage() {
           </span>
         </div>
         <h1 className="text-5xl sm:text-6xl md:text-7xl font-serif tracking-tight text-ds-primary leading-[0.95]">
-          Diagnose your
-          <br />
-          <Typewriter />
+          <span data-enter="title-1" className="block">Diagnose your</span>
+          <span data-enter="title-2" className="block"><Typewriter startDelay={1000} /></span>
         </h1>
-        <p className="text-base sm:text-lg text-ds-secondary mt-5 sm:mt-6 max-w-lg leading-relaxed">
+        <p data-enter="desc" className="text-base sm:text-lg text-ds-secondary mt-5 sm:mt-6 max-w-lg leading-relaxed">
           Paste any URL and get an instant diagnostic on visual consistency
           — colors, spacing, typography, and layout tokens.
         </p>
       </header>
 
       {/* ── Input ── */}
-      <div className="relative mb-3 sm:mb-4">
+      <div data-enter="input" className="relative mb-3 sm:mb-4">
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
           <input
             ref={urlInputRef}
@@ -855,7 +1043,7 @@ export default function AuditPage() {
             className="w-full sm:flex-1 h-13 sm:h-14 px-4 sm:px-5 rounded-xl bg-bg-card border border-border text-base font-mono text-ds-primary placeholder:text-ds-tertiary focus:outline-none focus:border-ds-olive focus:ring-2 focus:ring-ds-olive/20 disabled:opacity-50 transition-colors shadow-sm"
           />
           {/* ── Action button ── */}
-          <div className="relative shrink-0 group" style={{ minWidth: "7.5rem" }}>
+          <div data-enter="btn" className="relative shrink-0 group" style={{ minWidth: "7.5rem" }}>
             <button
               ref={btnRef}
               onClick={status === "running" ? cancel : () => run()}
@@ -904,9 +1092,10 @@ export default function AuditPage() {
 
       {/* ── Examples ── */}
       <div className="flex items-center gap-2 sm:gap-2.5 mb-8 sm:mb-10 flex-wrap">
-        <span className="text-xs text-ds-tertiary">Try</span>
+        <span data-enter="ex-item" className="text-xs text-ds-tertiary">Try</span>
         {EXAMPLES.map((ex) => (
           <button
+            data-enter="ex-item"
             key={ex}
             onClick={() => run(`https://${ex}`)}
             disabled={status === "running"}
@@ -917,11 +1106,30 @@ export default function AuditPage() {
         ))}
       </div>
 
-      {/* ── Ghost (idle) ── */}
-      {status === "idle" && <GhostPreview />}
+      {/* ── Swappable content area — height-transitions between states ──
+           overflow-clip (not overflow-hidden) clips content during the
+           height transition WITHOUT creating a scroll container, so
+           position:sticky on the chrome bar / section headers still works. */}
+      <div
+        className="overflow-clip transition-[height] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
+        style={{ height: swapHeight != null ? swapHeight : undefined }}
+      >
+        <div ref={swapInnerRef}>
 
-      {/* ── Progress ── */}
-      {status === "running" && (
+      {/* ── Ghost (idle) ── stays mounted during exit animation */}
+      {(status === "idle" || ghostExiting) && (
+        <div
+          data-enter="ghost"
+          style={ghostExiting && status !== "idle" ? {
+            animation: "ghostExit 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards",
+          } : undefined}
+        >
+          <GhostPreview />
+        </div>
+      )}
+
+      {/* ── Progress ── appears after ghost finishes exiting */}
+      {status === "running" && !ghostExiting && (
         <SteppedProgress phase={phase} message={progress} />
       )}
 
@@ -945,6 +1153,7 @@ export default function AuditPage() {
             onShare={handleCopy}
             shared={copied}
             onClose={expanded ? collapseModal : clearAnalysis}
+            onMinimize={minimizeCard}
             onExpand={() => expanded ? collapseModal() : setExpanded(true)}
             expanded={expanded}
             onUrlClick={expanded ? () => {
@@ -987,7 +1196,7 @@ export default function AuditPage() {
                 <div
                   key={c.name}
                   className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-lg border animate-fade-up ${gradePillBg[c.grade]}`}
-                  style={{ animationDelay: `${0.8 + i * 0.07}s` }}
+                  style={{ animationDelay: `${1.0 + i * 0.08}s` }}
                 >
                   <span className="text-xs text-ds-secondary">{c.name}</span>
                   <span className={`text-xs sm:text-sm font-bold font-mono ${gradeColor[c.grade]}`}>
@@ -997,6 +1206,24 @@ export default function AuditPage() {
               ))}
             </div>
           </div>
+
+          {/* ── Analysis warnings (degraded steps) ── */}
+          {result.warnings && result.warnings.length > 0 && (
+            <div className={`${inPad} py-3 bg-ds-amber/5 border-y border-ds-amber/20`}>
+              <div className="flex items-start gap-2">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 mt-0.5 text-ds-amber">
+                  <path d="M7 1L13 12H1L7 1Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                  <path d="M7 5.5V8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                  <circle cx="7" cy="9.75" r="0.5" fill="currentColor" />
+                </svg>
+                <div className="space-y-1">
+                  {result.warnings.map((w, i) => (
+                    <p key={i} className="text-xs text-ds-amber leading-relaxed">{w}</p>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ── Findings ── */}
           {result.fixPlan.length > 0 && (
@@ -1306,6 +1533,20 @@ export default function AuditPage() {
                       filterQuery={tokenQ}
                     />
                   </SectionGroup>
+
+                  {/* ── Component Patterns ── */}
+                  {result.patterns.patterns.length > 0 && (
+                    <SectionGroup
+                      label="Component Patterns"
+                      detail={`${result.patterns.patterns.length} patterns · ${result.patterns.coverage}% coverage`}
+                      defaultOpen={false}
+                      forceOpen={!!filterQuery}
+                      filterQuery={filterQuery}
+                      stickyTop={expanded ? 55 : 100}
+                    >
+                      <PatternsView data={result.patterns} />
+                    </SectionGroup>
+                  )}
                 </>
               );
             })()}
@@ -1313,6 +1554,7 @@ export default function AuditPage() {
           </>
         );
 
+        /* ── Fullscreen modal ── */
         if (expanded) {
           return createPortal(
             <div className="fixed inset-0 z-[9999]">
@@ -1328,9 +1570,13 @@ export default function AuditPage() {
                 }`}
                 style={{ clipPath: "inset(0 round 1rem)" }}
               >
-                {chrome}
-                <div className="flex-1 overflow-y-auto overflow-x-hidden">
-                  {cardBody}
+                <div className={`flex flex-col flex-1 min-h-0 ${
+                  modalClosing ? "animate-modal-content-out" : "animate-modal-content-in"
+                }`}>
+                  {chrome}
+                  <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                    {cardBody}
+                  </div>
                 </div>
               </div>
             </div>,
@@ -1338,24 +1584,131 @@ export default function AuditPage() {
           );
         }
 
+        /* ── Minimized: quote + dock chip ── */
+        if (minimized) {
+          return (
+            <>
+              {/* The quote — centered where the card was */}
+              <div className={`flex flex-col items-center justify-center py-20 sm:py-28 select-none ${
+                dockExiting ? "animate-quote-out" : ""
+              }`}>
+                {/* Decorative line */}
+                <div
+                  className="w-12 h-px bg-ds-olive/30 mb-8 animate-quote-line origin-center"
+                />
+                {/* Quote text — GSAP SplitText word reveal */}
+                <blockquote className="text-center max-w-md sm:max-w-lg px-4">
+                  <TextReveal
+                    type="words"
+                    duration={0.9}
+                    stagger={0.06}
+                    ease="expo.out"
+                    yPercent={110}
+                    start="top 95%"
+                    className="text-2xl sm:text-3xl md:text-4xl font-serif leading-snug text-ds-primary/90 tracking-tight"
+                  >
+                    <span className="block">&ldquo;The details are not the details.</span>
+                    <span className="block">They make the design.&rdquo;</span>
+                  </TextReveal>
+                </blockquote>
+                {/* Attribution */}
+                <p className="animate-quote-attr mt-6 text-sm font-mono text-ds-tertiary tracking-wide">
+                  — Charles Eames
+                </p>
+              </div>
+
+              {/* Dock chip — fixed at bottom center */}
+              <div
+                className={`fixed bottom-6 left-1/2 z-50 cursor-pointer group ${
+                  dockExiting ? "animate-dock-out" : "animate-dock-in"
+                }`}
+                onClick={restoreCard}
+              >
+                <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl border border-border bg-bg-card/95 backdrop-blur-md shadow-lg transition-all duration-200 group-hover:shadow-xl group-hover:border-ds-olive/30 group-active:scale-[0.97] group-active:duration-75">
+                  {/* Tiny score ring */}
+                  <div className="relative w-7 h-7 shrink-0">
+                    <svg viewBox="0 0 72 72" className="w-full h-full -rotate-90">
+                      <circle cx="36" cy="36" r="28" fill="none" stroke="var(--border)" strokeWidth="4" opacity="0.3" />
+                      <circle
+                        cx="36" cy="36" r="28" fill="none" stroke="var(--olive)" strokeWidth="4"
+                        strokeDasharray={2 * Math.PI * 28}
+                        strokeDashoffset={2 * Math.PI * 28 - (result.scores.overall / 100) * 2 * Math.PI * 28}
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <span className="absolute inset-0 flex items-center justify-center text-[9px] font-serif font-bold text-ds-olive">
+                      {result.scores.grade}
+                    </span>
+                  </div>
+                  {/* URL */}
+                  <span className="text-xs font-mono text-ds-secondary truncate max-w-[160px] sm:max-w-[220px]">
+                    {result.url.replace(/^https?:\/\//, "")}
+                  </span>
+                  {/* Restore hint */}
+                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="text-ds-tertiary group-hover:text-ds-olive transition-colors shrink-0">
+                    <path d="M2 7L5 3L8 7" />
+                  </svg>
+                </div>
+              </div>
+            </>
+          );
+        }
+
+        /* ── Normal inline card (with minimize/restore animations) ── */
+        const isFirstEntrance = !wasRestored.current && !minimizing && !restoring;
         return (
           <div
-            className="rounded-2xl border border-border shadow-sm bg-bg-card animate-fade-up"
-            style={{ clipPath: "inset(0 round 1rem)" }}
+            className={`rounded-2xl border border-border shadow-sm bg-bg-card ${
+              minimizing
+                ? "animate-minimize"
+                : restoring
+                  ? "animate-restore-shell"
+                  : wasRestored.current
+                    ? ""
+                    : "animate-results-shell"
+            }`}
+            style={{
+              clipPath: "inset(0 round 1rem)",
+              transformOrigin: "center top",
+            }}
           >
-            {chrome}
-            {cardBody}
+            <div className={
+              restoring
+                ? "animate-restore-content"
+                : isFirstEntrance
+                  ? "animate-results-content"
+                  : undefined
+            }>
+              {chrome}
+              {cardBody}
+            </div>
           </div>
         );
       })()}
 
-      <footer className="mt-12 sm:mt-16 pt-5 sm:pt-6 border-t border-border space-y-2">
+        </div>{/* end swapInnerRef */}
+      </div>{/* end height-transition wrapper */}
+
+      <footer data-enter="footer" className={`mt-12 sm:mt-16 pt-5 sm:pt-6 border-t border-border space-y-2 transition-opacity duration-300 ${minimized || minimizing || restoring ? "opacity-0 pointer-events-none" : "opacity-100"}`}>
         <p className="text-xs text-ds-tertiary leading-relaxed">
           Your design system has opinions. This tool just makes them visible.
         </p>
-        <p className="text-[10px] text-ds-tertiary/50 leading-relaxed font-mono">
-          Fun fact: the average website ships 37 unique font sizes. The ones that feel&nbsp;good? Usually&nbsp;six.
-        </p>
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-[10px] text-ds-tertiary/50 leading-relaxed font-mono">
+            Fun fact: the average website ships 37 unique font sizes. The ones that feel&nbsp;good? Usually&nbsp;six.
+          </p>
+          <a
+            href="https://www.linkedin.com/in/florian-gampert/"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Florian Gampert on LinkedIn"
+            className="shrink-0 flex items-center justify-center w-7 h-7 rounded-lg text-ds-tertiary/40 hover:text-[#0A66C2] hover:bg-[#0A66C2]/10 active:scale-95 transition-all duration-150 cursor-pointer"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+            </svg>
+          </a>
+        </div>
       </footer>
     </div>
   );

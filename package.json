@@ -9,8 +9,10 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@gsap/react": "^2.1.2",
     "@sparticuz/chromium": "143.0.4",
     "canvas-confetti": "^1.9.4",
+    "gsap": "^3.14.2",
     "next": "16.1.6",
     "playwright-core": "1.58.2",
     "react": "19.2.3",

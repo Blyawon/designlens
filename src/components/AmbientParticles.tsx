@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 
 /*  ═══════════════════════════════════════════════════════════════
     Ambient particles that float across the viewport.
@@ -33,6 +33,13 @@ interface Mote {
   delay: number;    // animation delay (s)
   driftX: number;   // px horizontal drift
   driftY: number;   // px vertical drift (negative = upward)
+}
+
+interface ShootingStar {
+  id: number;
+  top: number;      // px from top
+  right: number;    // px from right edge
+  duration: number; // animation duration (s)
 }
 
 /* Deterministic seed: generate particles once on mount so positions
@@ -106,6 +113,48 @@ export default function AmbientParticles() {
   const stars = useMemo(() => generateStars(STAR_COUNT), []);
   const motes = useMemo(() => generateMotes(MOTE_COUNT), []);
 
+  /* ── Shooting stars (dark mode only) ──
+     Spawns a single streak every 8-22 seconds. Each one lives for
+     the duration of its CSS animation, then gets cleaned out of state.
+     The timer resets whenever `dark` toggles so light mode pays zero cost. */
+  const [shootingStars, setShootingStars] = useState<ShootingStar[]>([]);
+  const ssTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const ssId = useRef(0);
+
+  useEffect(() => {
+    if (!dark || !mounted) {
+      setShootingStars([]);
+      return;
+    }
+
+    const spawn = () => {
+      const id = ssId.current++;
+      const star: ShootingStar = {
+        id,
+        top: Math.random() * 250,                  // upper portion of viewport
+        right: Math.random() * 600,                // right side of viewport
+        duration: 1 + Math.random() * 0.8,         // 1–1.8s
+      };
+
+      setShootingStars((prev) => [...prev, star]);
+
+      // Clean up after animation finishes
+      setTimeout(() => {
+        setShootingStars((prev) => prev.filter((s) => s.id !== id));
+      }, star.duration * 1000 + 300);
+
+      // Schedule the next one — 8-22s gap
+      ssTimeout.current = setTimeout(spawn, 8000 + Math.random() * 14000);
+    };
+
+    // First star after a short random wait
+    ssTimeout.current = setTimeout(spawn, 4000 + Math.random() * 6000);
+
+    return () => {
+      if (ssTimeout.current) clearTimeout(ssTimeout.current);
+    };
+  }, [dark, mounted]);
+
   if (!mounted) return null;
 
   return (
@@ -138,6 +187,39 @@ export default function AmbientParticles() {
               "--twinkle-max": `${s.opacity}`,
             } as React.CSSProperties}
           />
+        ))}
+
+        {/* ── Shooting star ── */}
+        {shootingStars.map((ss) => (
+          <span
+            key={ss.id}
+            style={{
+              position: "absolute",
+              top: ss.top,
+              right: ss.right,
+              left: "initial",
+              width: 4,
+              height: 4,
+              borderRadius: "50%",
+              background: "#fff",
+              boxShadow:
+                "0 0 0 4px rgba(255,255,255,0.1), 0 0 0 8px rgba(255,255,255,0.1), 0 0 20px rgba(255,255,255,0.1)",
+              animation: `shooting-star ${ss.duration}s ease-out forwards`,
+            }}
+          >
+            {/* Tail — gradient line trailing behind the dot */}
+            <span
+              style={{
+                position: "absolute",
+                top: "50%",
+                left: 0,
+                transform: "translateY(-50%)",
+                width: 150,
+                height: 1,
+                background: "linear-gradient(90deg, #fff, transparent)",
+              }}
+            />
+          </span>
         ))}
       </div>
 

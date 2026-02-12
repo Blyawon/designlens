@@ -25,13 +25,18 @@ export async function runAudit(
 
 
   /* Wrap each analysis module in try-catch so one crash doesn't
-     kill the whole audit. We degrade gracefully with empty defaults. */
+     kill the whole audit. We degrade gracefully with empty defaults
+     and track which steps failed so the UI can inform the user. */
+  const warnings: string[] = [];
+
   function safe<T>(label: string, phase: string, fn: () => T, fallback: T): T {
     try {
       onProgress?.({ phase, message: label });
       return fn();
     } catch (err) {
       console.error(`[audit] ${phase} failed:`, err);
+      const reason = err instanceof Error ? err.message : "unknown error";
+      warnings.push(`${phase} analysis failed (${reason}) — results for this section may be incomplete`);
       return fallback;
     }
   }
@@ -100,5 +105,6 @@ export async function runAudit(
     viewportWidth,
     pageHeight,
     fontFaces,
+    warnings,
   };
 }

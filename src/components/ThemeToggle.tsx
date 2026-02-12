@@ -6,10 +6,10 @@ import { sparkleTheme } from "@/lib/sparkles";
 /**
  * Animated sun/moon toggle with canvas-confetti sparkle burst.
  *
+ * On press: scale(0.97) in 75ms, spring back in 200ms (dock chip pattern).
  * On click:
- * 1. Button squeezes down then springs back (Web Animations API)
- * 2. Star-shaped confetti burst outward — icy blue for night, warm gold for day
- * 3. SVG icon rotates 180° with rays/crescent morph
+ * 1. Star-shaped confetti burst outward — icy blue for night, warm gold for day
+ * 2. SVG icon rotates 180° with rays/crescent morph
  */
 export default function ThemeToggle() {
   const [dark, setDark] = useState(false);
@@ -25,24 +25,12 @@ export default function ThemeToggle() {
     const next = !dark;
     const btn = btnRef.current;
 
-    /* 1. Squeeze & bounce via Web Animations API */
-    btn?.animate(
-      [
-        { transform: "scale(1)" },
-        { transform: "scale(0.75)", offset: 0.18 },
-        { transform: "scale(1.18)", offset: 0.48 },
-        { transform: "scale(0.96)", offset: 0.72 },
-        { transform: "scale(1)" },
-      ],
-      { duration: 450, easing: "cubic-bezier(0.34, 1.56, 0.64, 1)" }
-    );
-
-    /* 2. Confetti stars — slightly delayed so they burst at the bounce peak */
+    /* 1. Confetti stars — slightly delayed for cause → effect */
     setTimeout(() => {
       if (btn) sparkleTheme(btn, next);
     }, 100);
 
-    /* 3. Theme change — slight delay for perceived cause → effect */
+    /* 2. Theme change */
     setTimeout(() => {
       setDark(next);
       document.documentElement.classList.toggle("dark", next);
@@ -59,8 +47,9 @@ export default function ThemeToggle() {
       ref={btnRef}
       onClick={toggle}
       aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
-      className="relative w-10 h-10 rounded-full flex items-center justify-center cursor-pointer border border-border/60 bg-bg-card/80 hover:bg-bg-elevated transition-colors duration-300 shadow-sm backdrop-blur-sm"
+      className="group relative w-10 h-10 rounded-full flex items-center justify-center cursor-pointer border border-border/60 bg-bg-card/80 hover:bg-bg-elevated transition-all duration-200 active:scale-[0.97] active:duration-75 shadow-sm backdrop-blur-sm"
     >
+      <div className="transition-transform duration-300 ease-out group-hover:rotate-[20deg] dark:group-hover:rotate-[-12deg]">
       <svg
         viewBox="0 0 24 24"
         fill="none"
@@ -106,6 +95,7 @@ export default function ThemeToggle() {
           );
         })}
       </svg>
+      </div>
     </button>
   );
 }

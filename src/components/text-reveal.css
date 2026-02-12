@@ -1,0 +1,10 @@
+/* ── TextReveal: GSAP SplitText line-mask styles ──
+   Each .split-line gets overflow:hidden so words/chars
+   can slide up from behind the mask edge.
+   The .text_reveal_text starts invisible (inline style)
+   and GSAP sets autoAlpha:1 once the initial yPercent is applied,
+   preventing any flash of unsplit content (FOUC). */
+
+.split-line {
+  overflow: hidden;
+}

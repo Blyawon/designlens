@@ -144,11 +144,23 @@
   --font-mono: var(--font-geist-mono);
   --font-serif: var(--font-instrument-serif);
   --animate-fade-up: fadeUp 0.4s ease-out both;
+  --animate-results-shell: resultsShell 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-results-content: resultsContent 0.45s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
   --animate-ace-pulse: acePulse 2s ease-in-out 1s infinite;
-  --animate-modal-backdrop: modalBackdrop 0.25s ease-out both;
-  --animate-modal-expand: modalExpand 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
-  --animate-modal-backdrop-out: modalBackdropOut 0.2s ease-in both;
-  --animate-modal-collapse: modalCollapse 0.2s ease-in both;
+  --animate-modal-backdrop: modalBackdrop 0.3s ease-out both;
+  --animate-modal-expand: modalExpand 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-modal-content-in: modalContentIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
+  --animate-modal-backdrop-out: modalBackdropOut 0.25s ease-in 0.05s both;
+  --animate-modal-collapse: modalCollapse 0.3s cubic-bezier(0.4, 0, 1, 1) both;
+  --animate-modal-content-out: modalContentOut 0.15s ease-in both;
+  --animate-minimize: minimize 0.4s cubic-bezier(0.4, 0, 0.2, 1) both;
+  --animate-restore-shell: restoreShell 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-restore-content: restoreContent 0.35s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both;
+  --animate-dock-in: dockIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
+  --animate-dock-out: dockOut 0.18s cubic-bezier(0.4, 0, 1, 1) both;
+  --animate-quote-out: quoteOut 0.18s cubic-bezier(0.4, 0, 1, 1) both;
+  --animate-quote-line: quoteLine 0.45s cubic-bezier(0.22, 1, 0.36, 1) 0.25s both;
+  --animate-quote-attr: quoteAttr 0.45s cubic-bezier(0.22, 1, 0.36, 1) 0.4s both;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -158,6 +170,25 @@
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Lighter variant for compact stacked items (progress steps) —
+   less travel prevents overlapping motion in tight vertical lists */
+@keyframes fadeUpSmall {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Results card entrance — shell rises up from further below, slower deceleration */
+@keyframes resultsShell {
+  from { opacity: 0; transform: translateY(28px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Results card content — pure opacity fade, slightly delayed after the shell */
+@keyframes resultsContent {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 @keyframes blink {
@@ -203,6 +234,15 @@
   50%      { opacity: var(--twinkle-max, 0.5); }
 }
 
+/* Shooting star (dark mode) — dot head streaks upper-right → lower-left.
+   rotate(315deg) orients it, translateX pulls it across the sky.
+   All visual styling is inline; only the keyframe lives here. */
+@keyframes shooting-star {
+  0%   { transform: rotate(315deg) translateX(0); opacity: 1; }
+  70%  { opacity: 1; }
+  100% { transform: rotate(315deg) translateX(-600px); opacity: 0; }
+}
+
 /* Dust motes (light mode) — drift slowly while fading in/out.
    --mote-max, --mote-dx, --mote-dy set per-particle. */
 @keyframes float-mote {
@@ -210,6 +250,12 @@
   25%  { opacity: var(--mote-max, 0.2); }
   75%  { opacity: var(--mote-max, 0.2); }
   100% { opacity: 0; transform: translate(var(--mote-dx, 20px), var(--mote-dy, -30px)); }
+}
+
+/* Ghost preview exit — lifts up + fades out before progress steps appear */
+@keyframes ghostExit {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(-12px) scale(0.98); }
 }
 
 /* Indeterminate loading bar — slides back and forth within track */
@@ -238,10 +284,10 @@
   to   { opacity: 1; }
 }
 
-/* Fullscreen modal — card scales up from slightly smaller */
+/* Fullscreen modal — card rises from below into position */
 @keyframes modalExpand {
-  from { opacity: 0; transform: scale(0.92); }
-  to   { opacity: 1; transform: scale(1); }
+  from { opacity: 0; transform: translateY(48px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* Fullscreen modal — backdrop fades out */
@@ -250,10 +296,101 @@
   to   { opacity: 0; }
 }
 
-/* Fullscreen modal — card scales down on exit */
+/* Fullscreen modal — card sinks back down on exit */
 @keyframes modalCollapse {
-  from { opacity: 1; transform: scale(1); }
-  to   { opacity: 0; transform: scale(0.92); }
+  from { opacity: 1; transform: translateY(0); }
+  to   { opacity: 0; transform: translateY(48px); }
+}
+
+/* Fullscreen modal — inner content fades in after shell arrives */
+@keyframes modalContentIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Fullscreen modal — inner content fades out before shell leaves */
+@keyframes modalContentOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+/* ── Minimize / restore easter egg ─────────────────────────── */
+
+/* Card sinks down, tilts slightly in perspective, fades out */
+@keyframes minimize {
+  0%   { opacity: 1; transform: perspective(800px) translateY(0) rotateX(0deg) scale(1); }
+  100% { opacity: 0; transform: perspective(800px) translateY(64px) rotateX(2.5deg) scale(0.97); }
+}
+
+/* Card shell fades in from below */
+@keyframes restoreShell {
+  0%   { opacity: 0; transform: translateY(28px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* Card inner content fades in slightly after the shell
+   (starts invisible, prevents the content "blink") */
+@keyframes restoreContent {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+/* Dock chip rises into place */
+@keyframes dockIn {
+  0%   { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* Dock chip drops away */
+@keyframes dockOut {
+  0%   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(10px); }
+}
+
+/* Quote fades out on restore */
+@keyframes quoteOut {
+  0%   { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Decorative line grows in from center */
+@keyframes quoteLine {
+  0%   { transform: scaleX(0); opacity: 0; }
+  100% { transform: scaleX(1); opacity: 1; }
+}
+
+/* Attribution fades in after quote */
+@keyframes quoteAttr {
+  0%   { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Page entrance orchestration ──────────────────────────── */
+
+/* Gradient orbs — fade in from transparent to their own opacity.
+   Only the `from` state is defined; the `to` value is inherited
+   from the element's Tailwind opacity class (e.g. opacity-[0.18]).
+   Uses a separate property (opacity) from the drift animation
+   (transform), so both run simultaneously without conflict. */
+@keyframes orbReveal {
+  from { opacity: 0; }
+}
+
+/* Generic fade-in — used for layout-level elements like ThemeToggle
+   that live outside the GSAP-orchestrated container. */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* SSR-safe initial state for page entrance.
+   Elements with [data-enter] inside a [data-page-enter] container
+   start invisible from the very first paint (no FOUC). GSAP then
+   animates them in. Once complete, [data-page-entered] is added
+   to the container, which disables this rule so elements stay
+   visible if they remount later (e.g. ghost preview after reset). */
+[data-page-enter]:not([data-page-entered]) [data-enter] {
+  opacity: 0;
 }
 
 /* ═══════════════════════════════════════════════════════════════
