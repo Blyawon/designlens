@@ -1208,6 +1208,27 @@ export default function AuditPage() {
             </div>
           </div>
 
+          {/* ── Aggressive mode: results likely wrong ── */}
+          {result.aggressiveMode && (
+            <div className={`${inPad} py-4 sm:py-5 bg-ds-amber/10 border-y border-ds-amber/30`}>
+              <div className="flex items-start gap-3">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="shrink-0 mt-0.5 text-ds-amber" aria-hidden>
+                  <path d="M10 2L18 16H2L10 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                  <path d="M10 7v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  <circle cx="10" cy="12.5" r="1" fill="currentColor" />
+                </svg>
+                <div>
+                  <p className="text-sm font-semibold text-ds-amber">
+                    Results may be wrong — fallback mode was used
+                  </p>
+                  <p className="text-sm text-ds-secondary mt-1 leading-relaxed">
+                    This site was audited in fallback mode because the browser ran out of resources (the page was too heavy). JavaScript was disabled and many resources were blocked, so typography, colours, and layout data are likely incomplete or inaccurate. Try again later or audit a lighter page for reliable results.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* ── Analysis warnings (degraded steps) ── */}
           {result.warnings && result.warnings.length > 0 && (
             <div className={`${inPad} py-3 bg-ds-amber/5 border-y border-ds-amber/20`}>

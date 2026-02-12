@@ -44,6 +44,8 @@ export interface SampleResult {
   pageHeight: number;
   fontFaces: string[];
   cssTokens: CSSToken[];
+  /** True when the page was loaded in fallback mode (no JS, blocked resources) after crashes. */
+  aggressiveMode?: boolean;
 }
 
 // ---- Colour primitives ----
@@ -394,6 +396,8 @@ export interface AuditResult {
   fontFaces: string[];
   /** Analysis steps that failed and fell back to defaults. */
   warnings: string[];
+  /** True when sampling used fallback mode (no JS, blocked resources); results are likely wrong. */
+  aggressiveMode?: boolean;
 }
 
 // ---- Progress callback for SSE ----

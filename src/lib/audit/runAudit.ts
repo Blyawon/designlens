@@ -20,7 +20,7 @@ export async function runAudit(
 ): Promise<AuditResult> {
   const id = crypto.randomBytes(8).toString("hex");
 
-  const { elements, viewportWidth, pageHeight, fontFaces, cssTokens } =
+  const { elements, viewportWidth, pageHeight, fontFaces, cssTokens, aggressiveMode } =
     await sampleDom(url, onProgress, signal);
 
 
@@ -80,7 +80,8 @@ export async function runAudit(
     typeSprawl,
     spacingSprawl,
     miscSprawl,
-    elements.length
+    elements.length,
+    aggressiveMode
   );
 
   onProgress?.({ phase: "fixplan", message: "Generating findings…" });
@@ -106,5 +107,6 @@ export async function runAudit(
     pageHeight,
     fontFaces,
     warnings,
+    aggressiveMode,
   };
 }

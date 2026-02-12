@@ -305,14 +305,17 @@ async function sampleDomOnce(
     page.setDefaultTimeout(aggressiveMode ? 15_000 : (isServerless ? 20_000 : 30_000));
 
     /* Block heavy resources to save memory.
-       Serverless: block images, media, fonts, AND scripts (JS is disabled
-       anyway — no point downloading script files). We only need HTML + CSS.
-       Aggressive: also block "other" (beacons, websockets, etc).
+       Serverless: block images, media, and scripts (JS is disabled anyway).
+       We do NOT block fonts: getComputedStyle returns the resolved font
+       that actually loaded; if font files are aborted, every element
+       resolves to the fallback (e.g. Times New Roman), so typography
+       analytics would be wrong. Allowing fonts keeps type sprawl accurate.
+       Aggressive: also block fonts + "other" to minimise memory on crash retry.
        Locally: keep fonts + images for screenshots, block media. */
     const blockTypes: string[] = aggressiveMode
       ? ["media", "image", "font", "script", "other"]
       : isServerless
-        ? ["media", "image", "font", "script"]
+        ? ["media", "image", "script"]
         : ["media"];
 
     /* In aggressive mode, also block known heavy third-party domains */
@@ -798,6 +801,7 @@ async function sampleDomOnce(
       pageHeight: extras.pageHeight,
       fontFaces: extras.fontFaces,
       cssTokens: extras.cssTokens,
+      aggressiveMode,
     };
   } finally {
     /* ── Cleanup strategy ──

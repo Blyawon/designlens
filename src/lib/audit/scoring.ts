@@ -281,8 +281,16 @@ const WEIGHTS: Record<string, number> = {
 };
 
 function computeConfidence(
-  elementCount: number
+  elementCount: number,
+  aggressiveMode?: boolean
 ): { level: "low" | "medium" | "high"; note: string } {
+  if (aggressiveMode) {
+    return {
+      level: "low",
+      note:
+        "Page was loaded in fallback mode (no JavaScript, limited resources) — results are likely incomplete or wrong.",
+    };
+  }
   if (elementCount < 30) {
     return {
       level: "low",
@@ -306,7 +314,8 @@ export function computeScores(
   type: TypeSprawlResult,
   spacing: SpacingSprawlResult,
   misc: MiscSprawlResult,
-  elementCount: number
+  elementCount: number,
+  aggressiveMode?: boolean
 ): AuditScores {
   // Order matters: top 5 shown in hero overview, so put the
   // highest-signal categories first.
@@ -331,7 +340,7 @@ export function computeScores(
     wTotal += w;
   }
   const overall = Math.round(wSum / wTotal);
-  const { level, note } = computeConfidence(elementCount);
+  const { level, note } = computeConfidence(elementCount, aggressiveMode);
 
   return {
     overall,
