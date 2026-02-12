@@ -294,8 +294,10 @@ async function sampleDomOnce(
        sites load fonts and apply styles via JS, so we got fallback fonts
        and incomplete DOM. We enable JS everywhere for accurate analysis;
        heavy pages that OOM still get retries then aggressive fallback. */
-    const VIEWPORT_WIDTH = aggressiveMode ? 800 : (isServerless ? 1024 : 1280);
-    const VIEWPORT_HEIGHT = aggressiveMode ? 600 : (isServerless ? 600 : 900);
+    /* Same viewport locally and on serverless so computed pixel values match
+       (different width/height → different layout math → fractional px and different breakpoints). */
+    const VIEWPORT_WIDTH = aggressiveMode ? 800 : 1280;
+    const VIEWPORT_HEIGHT = aggressiveMode ? 600 : 900;
 
     const page = await browser.newPage({
       viewport: { width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT },
