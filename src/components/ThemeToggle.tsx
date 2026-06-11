@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useRef } from "react";
 import { sparkleTheme } from "@/lib/sparkles";
+import { useDarkMode, useHydrated } from "@/lib/useTheme";
 
 /**
  * Animated sun/moon toggle with canvas-confetti sparkle burst.
@@ -12,14 +13,11 @@ import { sparkleTheme } from "@/lib/sparkles";
  * 2. SVG icon rotates 180° with rays/crescent morph
  */
 export default function ThemeToggle() {
-  const [dark, setDark] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  /* The .dark class on <html> is the single source of truth — the hook
+     subscribes to it, so toggling the class below re-renders us. */
+  const dark = useDarkMode();
+  const mounted = useHydrated();
   const btnRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    setDark(document.documentElement.classList.contains("dark"));
-    setMounted(true);
-  }, []);
 
   const toggle = () => {
     const next = !dark;
@@ -32,7 +30,6 @@ export default function ThemeToggle() {
 
     /* 2. Theme change */
     setTimeout(() => {
-      setDark(next);
       document.documentElement.classList.toggle("dark", next);
       localStorage.setItem("theme", next ? "dark" : "light");
     }, 70);
