@@ -15,6 +15,7 @@
 
 import { chromium, Browser } from "playwright-core";
 import { SampledElement, SampleResult, ProgressCallback, CSSToken } from "./types";
+import { hostIsBlocked } from "@/lib/ssrf";
 import { rmSync, readdirSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -53,6 +54,61 @@ function isCrashError(err: unknown): boolean {
    Must be less than the serverless function maxDuration (120s) to leave
    time for the analysis phase after DOM sampling. */
 const SAMPLE_BUDGET_MS = 90_000;
+
+/* ---- sanitisation of values returned from the page context ----
+   page.evaluate runs inside the audited (untrusted) page, which can
+   tamper with DOM APIs and return arbitrary payloads. Cap counts and
+   string lengths so a hostile page can't balloon server memory or the
+   response sent back to the client. */
+
+const MAX_FIELD_LEN = 300;
+
+function capStr(v: unknown, max = MAX_FIELD_LEN): string | undefined {
+  if (typeof v !== "string") return undefined;
+  return v.length > max ? v.slice(0, max) : v;
+}
+
+function capNum(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
+const SAMPLE_STRING_FIELDS = [
+  "color", "backgroundColor", "fontSize", "fontWeight", "lineHeight",
+  "fontFamily", "letterSpacing", "marginTop", "marginRight", "marginBottom",
+  "marginLeft", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+  "gap", "borderRadius", "boxShadow", "borderWidth", "borderStyle",
+  "borderColor", "zIndex", "opacity", "transitionDuration",
+  "transitionTimingFunction", "region",
+] as const;
+
+function sanitizeSamples(raw: unknown, maxCount: number): SampledElement[] {
+  if (!Array.isArray(raw)) return [];
+  const out: SampledElement[] = [];
+  for (const item of raw.slice(0, maxCount)) {
+    if (!item || typeof item !== "object") continue;
+    const s = item as Record<string, unknown>;
+    const bb = (s.boundingBox && typeof s.boundingBox === "object"
+      ? s.boundingBox
+      : {}) as Record<string, unknown>;
+    const el: SampledElement = {
+      selector: capStr(s.selector) ?? "",
+      tag: capStr(s.tag, 32) ?? "",
+      isTextElement: s.isTextElement === true,
+      boundingBox: {
+        width: capNum(bb.width),
+        height: capNum(bb.height),
+        top: capNum(bb.top),
+        left: capNum(bb.left),
+      },
+    };
+    for (const f of SAMPLE_STRING_FIELDS) {
+      const v = capStr(s[f]);
+      if (v !== undefined) el[f] = v;
+    }
+    out.push(el);
+  }
+  return out;
+}
 
 export async function sampleDom(
   url: string,
@@ -328,13 +384,24 @@ async function sampleDomOnce(
         ]
       : [];
 
-    await page.route("**/*", (route) => {
+    await page.route("**/*", async (route) => {
       const req = route.request();
       const type = req.resourceType();
       if (blockTypes.includes(type)) return route.abort();
+      const reqUrl = req.url();
       if (blockDomains.length > 0) {
-        const reqUrl = req.url().toLowerCase();
-        if (blockDomains.some((d) => reqUrl.includes(d))) return route.abort();
+        const lower = reqUrl.toLowerCase();
+        if (blockDomains.some((d) => lower.includes(d))) return route.abort();
+      }
+      /* SSRF guard: the initial URL is validated upstream, but the page
+         can still redirect or load subresources pointing at internal
+         services (cloud metadata, link-local, RFC1918). Block any request
+         whose host is — or resolves to — a private/special address. */
+      try {
+        const { hostname } = new URL(reqUrl);
+        if (await hostIsBlocked(hostname)) return route.abort();
+      } catch {
+        return route.abort();
       }
       return route.continue();
     });
@@ -470,7 +537,7 @@ async function sampleDomOnce(
     onProgress?.({ phase: "sampling", message: "Sampling DOM elements…" });
 
     /* ---- single evaluate pass inside browser context ---- */
-    const samples: SampledElement[] = await page.evaluate(
+    const rawSamples: unknown = await page.evaluate(
       ({ textSel, maxText, maxLayout }: { textSel: string; maxText: number; maxLayout: number }) => {
 
         function getRegion(el: Element): string {
@@ -554,7 +621,7 @@ async function sampleDomOnce(
         }
 
         // ---- Pass 1: text elements ----
-        const results: any[] = [];
+        const results: Record<string, unknown>[] = [];
         const textEls = document.querySelectorAll(textSel);
         let tCount = 0;
 
@@ -689,6 +756,11 @@ async function sampleDomOnce(
       }
     );
 
+    const samples = sanitizeSamples(
+      rawSamples,
+      MAX_TEXT_DEFAULT + MAX_LAYOUT_DEFAULT
+    );
+
     onProgress?.({
       phase: "sampled",
       message: `Sampled ${samples.length} elements`,
@@ -793,13 +865,30 @@ async function sampleDomOnce(
 
     checkAbort();
 
+    /* Same trust boundary as the samples: cap sizes on everything the
+       page context handed back before it reaches analysis / the client. */
+    const fontFaces = (Array.isArray(extras.fontFaces) ? extras.fontFaces : [])
+      .filter((f): f is string => typeof f === "string")
+      .slice(0, 60)
+      .map((f) => f.slice(0, 4096));
+
+    const cssTokens: CSSToken[] = (Array.isArray(extras.cssTokens) ? extras.cssTokens : [])
+      .filter((t): t is { name: string; value: string; rawValue?: string } =>
+        !!t && typeof t === "object" && typeof t.name === "string" && typeof t.value === "string")
+      .slice(0, tokenLimit)
+      .map((t) => ({
+        name: t.name.slice(0, 128),
+        value: t.value.slice(0, 512),
+        rawValue: capStr(t.rawValue, 512),
+      }));
+
     return {
       elements: samples,
       viewportWidth: VIEWPORT_WIDTH,
       viewportHeight: VIEWPORT_HEIGHT,
-      pageHeight: extras.pageHeight,
-      fontFaces: extras.fontFaces,
-      cssTokens: extras.cssTokens,
+      pageHeight: capNum(extras.pageHeight),
+      fontFaces,
+      cssTokens,
       aggressiveMode,
     };
   } finally {

@@ -415,9 +415,9 @@ function SectionGroup({
      manually collapse them. We track that override separately and reset
      it whenever the query text changes. */
   const [searchCollapsed, setSearchCollapsed] = useState(false);
-  const prevQuery = useRef(filterQuery);
-  if (filterQuery !== prevQuery.current) {
-    prevQuery.current = filterQuery;
+  const [prevQuery, setPrevQuery] = useState(filterQuery);
+  if (filterQuery !== prevQuery) {
+    setPrevQuery(filterQuery);
     if (searchCollapsed) setSearchCollapsed(false);
   }
 

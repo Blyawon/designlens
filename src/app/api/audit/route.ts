@@ -10,23 +10,34 @@
 import { NextRequest } from "next/server";
 import { runAudit } from "@/lib/audit/runAudit";
 import { validateUrl } from "@/lib/validateUrl";
+import { hostIsBlocked } from "@/lib/ssrf";
 import { normalizeError } from "@/lib/audit/errorMessages";
 
 export const maxDuration = 120; // seconds — allows up to 3 retry attempts on crash
+
+const MAX_BODY_BYTES = 4096;
 
 /* ---- simple in-memory rate limiter ---- */
 
 const hits = new Map<string, number[]>();
 const LIMIT = 5;
 const WINDOW = 60_000;
+const MAX_TRACKED_IPS = 5000;
 
 function rateOk(ip: string): boolean {
   const now = Date.now();
-  const list = (hits.get(ip) ?? []).filter((t) => now - t < WINDOW);
-  if (list.length === 0) {
-    /* Evict stale keys to prevent unbounded Map growth on warm containers */
-    hits.delete(ip);
+
+  /* Bound the Map: when too many distinct IPs accumulate on a warm
+     container, sweep every key's stale timestamps in one pass. */
+  if (hits.size > MAX_TRACKED_IPS) {
+    for (const [key, times] of hits) {
+      const fresh = times.filter((t) => now - t < WINDOW);
+      if (fresh.length === 0) hits.delete(key);
+      else hits.set(key, fresh);
+    }
   }
+
+  const list = (hits.get(ip) ?? []).filter((t) => now - t < WINDOW);
   if (list.length >= LIMIT) {
     hits.set(ip, list);
     return false;
@@ -36,29 +47,40 @@ function rateOk(ip: string): boolean {
   return true;
 }
 
+function clientIp(req: NextRequest): string {
+  /* On Vercel, x-forwarded-for is normalised by the platform; the
+     first entry is the client. Strip any extra entries appended by
+     intermediate proxies so one client can't rotate identities. */
+  const fwd = req.headers.get("x-forwarded-for");
+  if (fwd) {
+    const first = fwd.split(",")[0].trim();
+    if (first) return first;
+  }
+  return req.headers.get("x-real-ip")?.trim() || "unknown";
+}
+
 /* ---- handler ---- */
 
 export async function POST(req: NextRequest) {
-  const ip =
-    req.headers.get("x-forwarded-for") ??
-    req.headers.get("x-real-ip") ??
-    "unknown";
-
-  if (!rateOk(ip)) {
+  if (!rateOk(clientIp(req))) {
     return Response.json(
       { error: "You've run too many audits in a short time. Wait a minute and try again." },
       { status: 429 }
     );
   }
 
-  let body: { url?: string };
+  let body: { url?: unknown };
   try {
-    body = await req.json();
+    const raw = await req.text();
+    if (raw.length > MAX_BODY_BYTES) {
+      return Response.json({ error: "Request is too large." }, { status: 413 });
+    }
+    body = JSON.parse(raw);
   } catch {
     return Response.json({ error: "We couldn't read your request. Please try again." }, { status: 400 });
   }
 
-  if (!body.url) {
+  if (typeof body?.url !== "string" || !body.url) {
     return Response.json({ error: "Please enter a URL to analyse." }, { status: 400 });
   }
 
@@ -67,15 +89,27 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: v.error }, { status: 400 });
   }
 
+  /* DNS-level SSRF check: reject hostnames that resolve to private or
+     special-purpose addresses (cloud metadata, internal services). */
+  if (await hostIsBlocked(new URL(v.url!).hostname)) {
+    return Response.json(
+      { error: "That address points to an internal/private network. Enter a publicly accessible URL." },
+      { status: 400 }
+    );
+  }
+
   /* ---- Create an AbortController that fires when the client disconnects.
      This is critical: without it, a user who closes the tab still leaves
      a Playwright browser running until timeout, wasting serverless $$. ---- */
 
   const abortController = new AbortController();
 
-  /* Next.js provides req.signal which aborts when the client disconnects */
+  /* Next.js provides req.signal which aborts when the client disconnects.
+     Check the flag first — the abort event never fires for listeners added
+     after the signal has already aborted. */
   if (req.signal) {
-    req.signal.addEventListener("abort", () => abortController.abort());
+    if (req.signal.aborted) abortController.abort();
+    else req.signal.addEventListener("abort", () => abortController.abort());
   }
 
   /* ---- stream response via SSE ---- */

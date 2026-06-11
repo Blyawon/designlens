@@ -37,7 +37,7 @@ async function run() {
             console.error("Error:", msg.message);
             process.exit(1);
           }
-        } catch (_) {}
+        } catch {}
       }
     }
   }
