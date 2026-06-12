@@ -11,8 +11,6 @@ const INTERACTIVE_TAGS = new Set([
   "button", "a", "input", "select", "textarea", "label",
 ]);
 
-const HEADING_TAGS = new Set(["h1", "h2", "h3", "h4", "h5", "h6"]);
-
 function normalizeToHex(raw: string | undefined): string | null {
   if (!raw || raw === "gradient-or-image") return null;
   const parsed = parseColor(raw);

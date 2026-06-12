@@ -50,10 +50,9 @@ export function analyzeSpacingSprawl(
 
   let detectedBase = 4;
   if (small.length > 0) {
-    // Check if base-8 or base-4 fits better
+    // Base-8 when most values sit on the 8px grid, otherwise base-4
     const vals = allValues.map((v) => parsePx(v.value)).filter((px) => px > 0);
     const fit8 = vals.filter((px) => { const r = px % 8; return r < 0.1 || 8 - r < 0.1; }).length;
-    const fit4 = vals.filter((px) => { const r = px % 4; return r < 0.1 || 4 - r < 0.1; }).length;
     detectedBase = fit8 / vals.length > 0.6 ? 8 : 4;
   }
 

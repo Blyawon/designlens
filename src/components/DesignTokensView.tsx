@@ -271,16 +271,15 @@ function ColorSwatch({ token }: { token: CSSToken }) {
   }, [hover]);
 
   useLayoutEffect(() => {
-    if (!hover) {
-      setTooltipRect(null);
-      return;
-    }
+    if (!hover) return;
     updateRect();
     window.addEventListener("scroll", updateRect, true);
     window.addEventListener("resize", updateRect);
     return () => {
       window.removeEventListener("scroll", updateRect, true);
       window.removeEventListener("resize", updateRect);
+      /* Runs when `hover` turns off — hide the tooltip again */
+      setTooltipRect(null);
     };
   }, [hover, updateRect]);
 

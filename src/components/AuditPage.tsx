@@ -59,9 +59,12 @@ function Typewriter({ startDelay = 0 }: { startDelay?: number }) {
       return () => clearTimeout(t);
     }
     if (deleting && text === "") {
-      setDeleting(false);
-      setWordIdx((prev) => (prev + 1) % ROTATE_WORDS.length);
-      return;
+      /* Advance to the next word on the same 35ms tick as deletion */
+      const t = setTimeout(() => {
+        setDeleting(false);
+        setWordIdx((prev) => (prev + 1) % ROTATE_WORDS.length);
+      }, 35);
+      return () => clearTimeout(t);
     }
     const speed = deleting ? 35 : 70;
     const t = setTimeout(() => {
@@ -110,16 +113,18 @@ function ShareButtonWithTooltip({ onShare, shared }: { onShare: () => void; shar
   }, [shared]);
 
   useLayoutEffect(() => {
-    if (!shared) {
-      setTooltipRect(null);
-      return;
-    }
-    updateRect();
+    if (!shared) return;
+    /* Initial measurement on the next frame — the portal only renders
+       once the rect exists, so there's no mispositioned flash. */
+    const raf = requestAnimationFrame(updateRect);
     window.addEventListener("scroll", updateRect, true);
     window.addEventListener("resize", updateRect);
     return () => {
+      cancelAnimationFrame(raf);
       window.removeEventListener("scroll", updateRect, true);
       window.removeEventListener("resize", updateRect);
+      /* Runs when `shared` turns off — hide the tooltip again */
+      setTooltipRect(null);
     };
   }, [shared, updateRect]);
 
@@ -415,9 +420,9 @@ function SectionGroup({
      manually collapse them. We track that override separately and reset
      it whenever the query text changes. */
   const [searchCollapsed, setSearchCollapsed] = useState(false);
-  const prevQuery = useRef(filterQuery);
-  if (filterQuery !== prevQuery.current) {
-    prevQuery.current = filterQuery;
+  const [prevQuery, setPrevQuery] = useState(filterQuery);
+  if (filterQuery !== prevQuery) {
+    setPrevQuery(filterQuery);
     if (searchCollapsed) setSearchCollapsed(false);
   }
 

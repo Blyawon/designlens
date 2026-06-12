@@ -1,13 +1,23 @@
 /* ---------------------------------------------------------------
-   URL validation — block private IPs, enforce http(s)
+   URL validation — enforce http(s), reject credentials, and block
+   local/private hosts (sync checks; the API route additionally
+   verifies DNS resolution via hostIsBlocked before auditing).
    --------------------------------------------------------------- */
+
+import { isBlockedHostname } from "./ssrf";
+
+const PRIVATE_ERROR =
+  "That looks like an internal/private network address. Enter a publicly accessible URL.";
 
 export function validateUrl(
   input: string
 ): { valid: boolean; url?: string; error?: string } {
   try {
     let urlStr = input.trim();
-    if (!urlStr.startsWith("http://") && !urlStr.startsWith("https://")) {
+    /* Only prepend https:// when there's no scheme at all — prefixing
+       "ftp://x.com" would otherwise mangle it into "https://ftp//x.com"
+       instead of rejecting it with a clear message below. */
+    if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(urlStr)) {
       urlStr = "https://" + urlStr;
     }
 
@@ -17,28 +27,21 @@ export function validateUrl(
       return { valid: false, error: "Only regular web URLs (http/https) can be analysed." };
     }
 
-    const hostname = url.hostname.toLowerCase();
-
-    // Block obvious local hosts
-    const blocked = ["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"];
-    if (blocked.includes(hostname)) {
-      return { valid: false, error: "Local addresses like localhost can't be reached from our server." };
+    /* Embedded credentials are never needed for a public page and can
+       be abused to confuse downstream URL parsing. */
+    if (url.username || url.password) {
+      return { valid: false, error: "URLs with embedded credentials can't be analysed." };
     }
 
-    // Block private IPv4 ranges
-    const ipMatch = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-    if (ipMatch) {
-      const [, aStr, bStr] = ipMatch;
-      const a = Number(aStr);
-      const b = Number(bStr);
-      if (a === 10)
-        return { valid: false, error: "That looks like an internal/private network address. Enter a publicly accessible URL." };
-      if (a === 172 && b >= 16 && b <= 31)
-        return { valid: false, error: "That looks like an internal/private network address. Enter a publicly accessible URL." };
-      if (a === 192 && b === 168)
-        return { valid: false, error: "That looks like an internal/private network address. Enter a publicly accessible URL." };
-      if (a === 169 && b === 254)
-        return { valid: false, error: "That looks like an internal/private network address. Enter a publicly accessible URL." };
+    if (isBlockedHostname(url.hostname)) {
+      return { valid: false, error: PRIVATE_ERROR };
+    }
+
+    /* Single-label hostnames ("intranet", "router") are either typos or
+       internal names that only resolve via private DNS search suffixes. */
+    const bareHost = url.hostname.replace(/\.$/, "");
+    if (!bareHost.includes(".") && !bareHost.includes(":")) {
+      return { valid: false, error: "That doesn't look like a valid public URL. Try something like https://example.com" };
     }
 
     return { valid: true, url: url.toString() };

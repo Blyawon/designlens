@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useDarkMode, useHydrated } from "@/lib/useTheme";
 
 /*  ═══════════════════════════════════════════════════════════════
     Ambient particles that float across the viewport.
@@ -92,23 +93,10 @@ const STAR_COUNT = 28;
 const MOTE_COUNT = 18;
 
 export default function AmbientParticles() {
-  const [dark, setDark] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setDark(document.documentElement.classList.contains("dark"));
-    setMounted(true);
-
-    /* Watch for theme changes (the toggle adds/removes .dark on <html>) */
-    const observer = new MutationObserver(() => {
-      setDark(document.documentElement.classList.contains("dark"));
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-    return () => observer.disconnect();
-  }, []);
+  /* Theme tracking (including the MutationObserver on <html>'s class)
+     lives in useDarkMode — no local state to sync. */
+  const dark = useDarkMode();
+  const mounted = useHydrated();
 
   const stars = useMemo(() => generateStars(STAR_COUNT), []);
   const motes = useMemo(() => generateMotes(MOTE_COUNT), []);
@@ -122,10 +110,7 @@ export default function AmbientParticles() {
   const ssId = useRef(0);
 
   useEffect(() => {
-    if (!dark || !mounted) {
-      setShootingStars([]);
-      return;
-    }
+    if (!dark || !mounted) return;
 
     const spawn = () => {
       const id = ssId.current++;
@@ -152,6 +137,9 @@ export default function AmbientParticles() {
 
     return () => {
       if (ssTimeout.current) clearTimeout(ssTimeout.current);
+      /* Leaving dark mode (or unmounting) — clear any in-flight streaks
+         so light mode pays zero cost. */
+      setShootingStars([]);
     };
   }, [dark, mounted]);
 
